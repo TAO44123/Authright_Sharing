@@ -1,0 +1,6 @@
+export const MAX_INLINE_AUDIO_BYTES = 14 * 1024 * 1024;
+export const MAX_AUDIO_BYTES = 128 * 1024 * 1024;
+export const CONTENT_TIMEOUT_MS = 900000;
+export const CONTENT_LEASE_MS = 960000;
+export const CONTENT_QUEUE_SECONDS = 1020;
+export const WORKER_STOP_TIMEOUT_MS = 930000;

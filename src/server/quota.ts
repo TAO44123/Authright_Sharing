@@ -9,6 +9,7 @@ export async function reserveQuota(
   attemptId: string,
   database = db,
   now = new Date(),
+  units = 1,
 ) {
   return database.transaction(async (tx) => {
     const [setting] = await tx
@@ -33,11 +34,11 @@ export async function reserveQuota(
           inArray(quotaReservations.status, ["reserved", "consumed"]),
         ),
       );
-    if (setting.quotaEnabled && count >= setting.monthlyCallLimit!)
+    if (setting.quotaEnabled && count + units > setting.monthlyCallLimit!)
       return false;
     await tx
       .insert(quotaReservations)
-      .values({ attemptId, billingMonth: month });
+      .values({ attemptId, billingMonth: month, units });
     return true;
   });
 }
@@ -46,6 +47,8 @@ export async function recordInvocation(
   model: string,
   database: Pick<typeof db, "update" | "insert"> = db,
   pricing?: SummaryPricing,
+  invocationIndex = 1,
+  service = "summary",
 ) {
   await database
     .update(quotaReservations)
@@ -55,7 +58,8 @@ export async function recordInvocation(
     .insert(usageEvents)
     .values({
       attemptId,
-      service: "summary",
+      service,
+      invocationIndex,
       model,
       status: "started",
       priceVersion: pricing?.version,
@@ -65,4 +69,19 @@ export async function recordInvocation(
       pricedAt: pricing ? new Date() : undefined,
     })
     .onConflictDoNothing();
+}
+
+// Reserved capacity covers both video calls; release an unstarted second call.
+export async function settleQuota(
+  attemptId: string,
+  database: Pick<typeof db, "update"> = db,
+) {
+  await database
+    .update(quotaReservations)
+    .set({
+      units: sql`greatest(1, (select count(*) from usage_events where attempt_id = ${attemptId}))`,
+      status: sql`case when exists (select 1 from usage_events where attempt_id = ${attemptId}) then 'consumed' else 'released' end`,
+      updatedAt: new Date(),
+    })
+    .where(eq(quotaReservations.attemptId, attemptId));
 }

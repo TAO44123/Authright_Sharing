@@ -1,5 +1,10 @@
 import { expect, it, vi } from "vitest";
-import { createGeminiSummary, GEMINI_SUMMARY_MODEL } from "../../src/server/content/gemini.ts";
+import {
+  createGeminiSummary,
+  createGeminiAudio,
+  MAX_AUDIO_BYTES,
+  GEMINI_SUMMARY_MODEL,
+} from "../../src/server/content/gemini.ts";
 
 const request = {
   title: "A research article",
@@ -43,7 +48,9 @@ it("sends one structured Gemini request and counts thinking tokens in billed out
   expect(url).not.toContain("private-test-key");
   expect(init?.headers).toMatchObject({ "x-goog-api-key": "private-test-key" });
   const body = JSON.parse(String(init?.body));
-  expect(body.systemInstruction.parts[0].text).toContain("untrusted source data");
+  expect(body.systemInstruction.parts[0].text).toContain(
+    "untrusted source data",
+  );
   expect(body.contents[0].parts[0].text).toContain(request.text);
   expect(body.generationConfig.responseMimeType).toBe("application/json");
   expect(body.generationConfig.responseSchema.required).toEqual([
@@ -69,8 +76,12 @@ it("sends one structured Gemini request and counts thinking tokens in billed out
 });
 
 it("does not retry a rejected request or a transport failure", async () => {
-  const rejected = vi.fn<typeof fetch>(async () => new Response("", { status: 429 }));
-  await expect(createGeminiSummary("key", "free", rejected).summarize(request)).rejects.toMatchObject({
+  const rejected = vi.fn<typeof fetch>(
+    async () => new Response("", { status: 429 }),
+  );
+  await expect(
+    createGeminiSummary("key", "free", rejected).summarize(request),
+  ).rejects.toMatchObject({
     code: "SUMMARY_RATE_LIMITED",
     outcomeUnknown: false,
   });
@@ -78,7 +89,9 @@ it("does not retry a rejected request or a transport failure", async () => {
   const broken = vi.fn<typeof fetch>(async () => {
     throw new TypeError("socket closed");
   });
-  await expect(createGeminiSummary("key", "free", broken).summarize(request)).rejects.toMatchObject({
+  await expect(
+    createGeminiSummary("key", "free", broken).summarize(request),
+  ).rejects.toMatchObject({
     code: "SUMMARY_OUTCOME_UNKNOWN",
     outcomeUnknown: true,
   });
@@ -93,9 +106,92 @@ it("refuses truncated or malformed model output", async () => {
       ],
     }),
   );
-  await expect(createGeminiSummary("key", "free", send).summarize(request)).rejects.toMatchObject({
+  await expect(
+    createGeminiSummary("key", "free", send).summarize(request),
+  ).rejects.toMatchObject({
     code: "SUMMARY_INCOMPLETE_RESPONSE",
     outcomeUnknown: true,
   });
   expect(send).toHaveBeenCalledTimes(1);
+});
+
+it("extracts only audio notes, ignores thought parts and uses a video-specific summary prompt", async () => {
+  const notes = {
+    language: "en",
+    notes: ["A spoken fact."],
+    uncertainties: ["The speaker's name is unclear."],
+  };
+  const send = vi.fn<typeof fetch>(async () =>
+    Response.json({
+      candidates: [
+        {
+          finishReason: "STOP",
+          content: {
+            parts: [
+              { thought: true, text: "private thought" },
+              { text: JSON.stringify(notes) },
+            ],
+          },
+        },
+      ],
+      usageMetadata: {
+        promptTokenCount: 800,
+        candidatesTokenCount: 40,
+        totalTokenCount: 840,
+      },
+    }),
+  );
+  const result = await createGeminiAudio("key", "free", send).extract({
+    audio: Buffer.from("audio"),
+    signal: request.signal,
+  });
+  expect(result).toMatchObject({ notes, inputTokens: 800, outputTokens: 40 });
+  const body = JSON.parse(String(send.mock.calls[0][1]?.body));
+  expect(body.contents[0].parts[0]).toEqual({
+    inlineData: {
+      mimeType: "audio/mp3",
+      data: Buffer.from("audio").toString("base64"),
+    },
+  });
+  expect(body.systemInstruction.parts[0].text).toContain(
+    "Do not output timestamps",
+  );
+  await createGeminiSummary("key", "free", send).summarize({
+    ...request,
+    sourceType: "youtube",
+  });
+  const summaryBody = JSON.parse(String(send.mock.calls[1][1]?.body));
+  expect(summaryBody.systemInstruction.parts[0].text).toContain(
+    "Call the source a video, never an article",
+  );
+});
+it("rejects oversized audio before dispatch and never retries malformed or rejected extraction", async () => {
+  const send = vi.fn<typeof fetch>(
+    async () => new Response("", { status: 503 }),
+  );
+  const provider = createGeminiAudio("key", "free", send);
+  await expect(
+    provider.extract({
+      audio: Buffer.alloc(MAX_AUDIO_BYTES + 1),
+      signal: request.signal,
+    }),
+  ).rejects.toMatchObject({ code: "AUDIO_TOO_LARGE" });
+  expect(send).not.toHaveBeenCalled();
+  await expect(
+    provider.extract({ audio: Buffer.from("audio"), signal: request.signal }),
+  ).rejects.toMatchObject({ code: "SUMMARY_API_ERROR" });
+  expect(send).toHaveBeenCalledTimes(1);
+  send.mockImplementation(async () =>
+    Response.json({
+      candidates: [
+        { finishReason: "STOP", content: { parts: [{ text: "{}" }] } },
+      ],
+    }),
+  );
+  await expect(
+    provider.extract({ audio: Buffer.from("audio"), signal: request.signal }),
+  ).rejects.toMatchObject({
+    code: "AUDIO_INVALID_NOTES",
+    outcomeUnknown: true,
+  });
 });

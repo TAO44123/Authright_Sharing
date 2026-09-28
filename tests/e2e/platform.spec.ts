@@ -60,13 +60,13 @@ test("OAuth consent opens Sharing while the client callback completes", async ({
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-      client_name: "Browser OAuth callback test",
-      application_type: "native",
-      redirect_uris: [redirectUri],
-      token_endpoint_auth_method: "none",
-      grant_types: ["authorization_code"],
-      response_types: ["code"],
-      scope: "shares:read",
+        client_name: "Browser OAuth callback test",
+        application_type: "native",
+        redirect_uris: [redirectUri],
+        token_endpoint_auth_method: "none",
+        grant_types: ["authorization_code"],
+        response_types: ["code"],
+        scope: "shares:read",
       }),
     }),
   );
@@ -358,6 +358,12 @@ test("video description stays distinct and a non-embeddable video keeps its sour
     .set({
       status: "ready",
       title: "Browser video preview",
+      summaryOverview: "This video explains how the audio workflow works.",
+      summaryKeyPoints: [
+        "Download audio",
+        "Extract spoken information",
+        "Generate a summary",
+      ],
       author: "Original creator",
       videoDescription: "",
       embeddable: false,
@@ -373,6 +379,13 @@ test("video description stays distinct and a non-embeddable video keeps its sour
   await expect(
     page.getByRole("heading", { name: "Video description" }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "AI video summary" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("This video explains how the audio workflow works."),
+  ).toBeVisible();
+  await expect(page.getByText("Based on the video’s audio.")).toBeVisible();
   await expect(
     page.getByText("The author did not provide a description."),
   ).toBeVisible();
@@ -392,7 +405,9 @@ test("video description stays distinct and a non-embeddable video keeps its sour
     .set({ embeddable: true })
     .where(eq(contents.id, video.id));
   const playerRequest = page.waitForRequest((request) =>
-    request.url().startsWith("https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ"),
+    request
+      .url()
+      .startsWith("https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ"),
   );
   await page.reload();
   await expect(page.locator("iframe.video-player")).toHaveAttribute(
@@ -400,7 +415,9 @@ test("video description stays distinct and a non-embeddable video keeps its sour
     "https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ",
   );
   await page.locator("iframe.video-player").scrollIntoViewIfNeeded();
-  expect((await playerRequest).headers().referer).toBe("http://localhost:3103/");
+  expect((await playerRequest).headers().referer).toBe(
+    "http://localhost:3103/",
+  );
   await expect(
     page.getByRole("link", { name: "Watch on YouTube" }),
   ).toBeVisible();

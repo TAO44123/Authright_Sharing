@@ -17,3 +17,5 @@ backups
 **/*.pem
 **/*.key
 .DS_Store
+
+.local

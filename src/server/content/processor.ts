@@ -1,4 +1,8 @@
-import { SUMMARY_PROMPT_VERSION } from "./summary-contract.ts";
+import { CONTENT_TIMEOUT_MS, CONTENT_LEASE_MS } from "./limits.ts";
+import {
+  SUMMARY_PROMPT_VERSION,
+  VIDEO_PROMPT_VERSION,
+} from "./summary-contract.ts";
 import { randomUUID } from "node:crypto";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { db } from "../db/index.ts";
@@ -11,13 +15,23 @@ import {
   quotaReservations,
 } from "../db/schema.ts";
 import { articleSummary } from "../../contracts/index.ts";
-import { reserveQuota, recordInvocation } from "../quota.ts";
+import { reserveQuota, recordInvocation, settleQuota } from "../quota.ts";
 import { fetchHtml } from "./fetch.ts";
 import { extractArticle } from "./extract.ts";
 import { youtubePreview, type parseVideo } from "./youtube.ts";
-import { ProcessingError, type SummaryProvider } from "./types.ts";
+import {
+  ProcessingError,
+  type AudioProvider,
+  type ModelUsage,
+  type SummaryPricing,
+  type SummaryProvider,
+} from "./types.ts";
+
+import { downloadYoutubeAudio } from "./youtube-audio.ts";
 
 export type ProcessorDependencies = {
+  audio?: AudioProvider;
+  downloadAudio?: typeof downloadYoutubeAudio;
   summary: SummaryProvider;
   acquireSummarySlot?: (signal: AbortSignal) => Promise<() => void>;
   fetchArticle?: typeof fetchHtml;
@@ -93,7 +107,7 @@ export async function processContentJob(
         state: "processing",
         attempts: task.attempts + 1,
         leaseToken: token,
-        leaseExpiresAt: new Date(Date.now() + 180000),
+        leaseExpiresAt: new Date(Date.now() + CONTENT_LEASE_MS),
         startedAt: new Date(),
         updatedAt: new Date(),
       })
@@ -117,10 +131,12 @@ export async function processContentJob(
   if (!claimed) return;
   const { task, content, attempt } = claimed;
   const signal = AbortSignal.any([
-    AbortSignal.timeout(120000),
+    AbortSignal.timeout(CONTENT_TIMEOUT_MS),
     ...(parentSignal ? [parentSignal] : []),
   ]);
   let invoked = false;
+  let invocationIndex = 0;
+  let previewUpdate: Partial<typeof contents.$inferInsert> = {};
   let releaseSummary: (() => void) | undefined;
   // Apply results only while this exact generation and lease still belong to us.
   async function finish(
@@ -171,56 +187,12 @@ export async function processContentJob(
       return true;
     });
   }
-  try {
-    if (content.type === "youtube") {
-      if (!content.videoId) throw new ProcessingError("INVALID_VIDEO_ID");
-      const preview = await (
-        deps.video ??
-        ((id, signal) => youtubePreview(id, deps.youtubeKey, signal))
-      )(content.videoId, signal);
-      signal.throwIfAborted();
-      await finish(
-        {
-          ...preview,
-          status: "ready",
-          failureCode: null,
-          metadataFetchedAt: new Date(),
-          metadataExpiresAt: new Date(Date.now() + 30 * 86400000),
-        },
-        "completed",
-        "succeeded",
-      );
-      return;
-    }
-    if (!deps.summary.configured)
-      throw new ProcessingError("SUMMARY_NOT_CONFIGURED");
-    const source = await (deps.fetchArticle ?? fetchHtml)(
-      content.originalUrl,
-      signal,
-    );
-    const article = (deps.extract ?? extractArticle)(source.html, source.url);
-    signal.throwIfAborted();
-    await database
-      .update(attempts)
-      .set({ stage: "summarize" })
-      .where(eq(attempts.id, attempt.id));
-    releaseSummary = await deps.acquireSummarySlot?.(signal);
-    if (!(await reserveQuota(attempt.id, database))) {
-      await finish(
-        {
-          status: "deferred_quota",
-          failureCode: "QUOTA_REACHED",
-          title: article.title,
-          author: article.author,
-        },
-        "deferred_quota",
-        "cancelled",
-        "QUOTA_REACHED",
-      );
-      return;
-    }
-    // The reservation becomes consumed before sending: an uncertain result is
-    // accounted for and must never trigger an automatic paid retry.
+  async function invoke<T extends ModelUsage>(
+    provider: { model: string; pricing?: SummaryPricing },
+    service: string,
+    call: () => Promise<T>,
+  ): Promise<T> {
+    const index = invocationIndex + 1;
     await database.transaction(async (tx) => {
       const [lease] = await tx
         .select()
@@ -229,33 +201,38 @@ export async function processContentJob(
           and(
             eq(tasks.id, task.id),
             eq(tasks.leaseToken, token),
+            eq(tasks.state, "processing"),
             sql`${tasks.leaseExpiresAt} > now()`,
           ),
         )
         .for("update");
       if (!lease || signal.aborted) throw new ProcessingError("LEASE_LOST");
-      await recordInvocation(attempt.id, deps.summary.model, tx, deps.summary.pricing);
+      await recordInvocation(
+        attempt.id,
+        provider.model,
+        tx,
+        provider.pricing,
+        index,
+        service,
+      );
     });
+    invocationIndex = index;
     invoked = true;
-    const result = await Promise.race([
-      deps.summary.summarize({
-        title: article.title,
-        text: article.text,
-        attemptId: attempt.id,
-        signal,
-      }),
-      new Promise<never>((_, reject) => {
-        if (signal.aborted)
-          reject(new ProcessingError("OUTCOME_UNKNOWN", false, true));
-        else
-          signal.addEventListener(
-            "abort",
-            () => reject(new ProcessingError("OUTCOME_UNKNOWN", false, true)),
-            { once: true },
-          );
-      }),
-    ]);
-    const parsed = articleSummary.safeParse(result.summary);
+    let onAbort: (() => void) | undefined;
+    let result: T;
+    try {
+      result = await Promise.race([
+        call(),
+        new Promise<never>((_, reject) => {
+          onAbort = () =>
+            reject(new ProcessingError("OUTCOME_UNKNOWN", false, true));
+          if (signal.aborted) onAbort();
+          else signal.addEventListener("abort", onAbort, { once: true });
+        }),
+      ]);
+    } finally {
+      if (onAbort) signal.removeEventListener("abort", onAbort);
+    }
     const usageKnown =
       result.inputTokens !== null && result.outputTokens !== null;
     if (
@@ -276,26 +253,142 @@ export async function processContentJob(
         providerRequestId: result.providerRequestId,
         model: result.model,
         estimatedAmount:
-          usageKnown && deps.summary.pricing
+          usageKnown && provider.pricing
             ? (
-                (result.inputTokens! * Number(deps.summary.pricing.inputPerMillion) +
-                  result.outputTokens! * Number(deps.summary.pricing.outputPerMillion)) /
+                (result.inputTokens! *
+                  Number(provider.pricing.inputPerMillion) +
+                  result.outputTokens! *
+                    Number(provider.pricing.outputPerMillion)) /
                 1_000_000
               ).toFixed(10)
             : null,
       })
-      .where(eq(usageEvents.attemptId, attempt.id));
+      .where(
+        and(
+          eq(usageEvents.attemptId, attempt.id),
+          eq(usageEvents.invocationIndex, index),
+        ),
+      );
+    return result;
+  }
+  try {
+    let article: { title: string; author: string | null; text: string };
+    let audioBytes: Buffer | undefined;
+    if (content.type === "youtube") {
+      if (!content.videoId) throw new ProcessingError("INVALID_VIDEO_ID");
+      const preview = await (
+        deps.video ??
+        ((id, signal) => youtubePreview(id, deps.youtubeKey, signal))
+      )(content.videoId, signal);
+      previewUpdate = {
+        ...preview,
+        metadataFetchedAt: new Date(),
+        metadataExpiresAt: new Date(Date.now() + 30 * 86400000),
+      };
+      signal.throwIfAborted();
+      // Metadata maintenance never regenerates an existing summary or hides failures.
+      if (task.kind === "youtube_refresh") {
+        await finish(
+          {
+            ...previewUpdate,
+            status:
+              content.failureCode === "METADATA_EXPIRED"
+                ? "ready"
+                : content.status,
+            failureCode:
+              content.failureCode === "METADATA_EXPIRED"
+                ? null
+                : content.failureCode,
+          },
+          "completed",
+          "succeeded",
+        );
+        return;
+      }
+      if (!deps.audio?.configured || !deps.summary.configured)
+        throw new ProcessingError("SUMMARY_NOT_CONFIGURED");
+      audioBytes = await (deps.downloadAudio ?? downloadYoutubeAudio)(
+        content.videoId,
+        signal,
+      );
+      article = { title: preview.title, author: preview.author, text: "" };
+    } else {
+      if (!deps.summary.configured)
+        throw new ProcessingError("SUMMARY_NOT_CONFIGURED");
+      const source = await (deps.fetchArticle ?? fetchHtml)(
+        content.originalUrl,
+        signal,
+      );
+      article = (deps.extract ?? extractArticle)(source.html, source.url);
+    }
+    signal.throwIfAborted();
+    await database
+      .update(attempts)
+      .set({ stage: audioBytes ? "extract" : "summarize" })
+      .where(eq(attempts.id, attempt.id));
+    releaseSummary = await deps.acquireSummarySlot?.(signal);
+    if (
+      !(await reserveQuota(
+        attempt.id,
+        database,
+        new Date(),
+        audioBytes ? 2 : 1,
+      ))
+    ) {
+      await finish(
+        {
+          ...previewUpdate,
+          status: "deferred_quota",
+          failureCode: "QUOTA_REACHED",
+          title: article.title,
+          author: article.author,
+        },
+        "deferred_quota",
+        "cancelled",
+        "QUOTA_REACHED",
+      );
+      return;
+    }
+    if (audioBytes) {
+      const bytes = audioBytes;
+      const extracted = await invoke(deps.audio!, "audio_extract", () =>
+        deps.audio!.extract({ audio: bytes, signal }),
+      );
+      article.text = JSON.stringify(extracted.notes);
+      audioBytes = undefined;
+      await database
+        .update(attempts)
+        .set({ stage: "summarize" })
+        .where(eq(attempts.id, attempt.id));
+    }
+    const result = await invoke(deps.summary, "summary", () =>
+      deps.summary.summarize({
+        title:
+          content.type === "youtube"
+            ? "Audio-derived video notes"
+            : article.title,
+        text: article.text,
+        sourceType: content.type,
+        attemptId: attempt.id,
+        signal,
+      }),
+    );
+    const parsed = articleSummary.safeParse(result.summary);
     if (!parsed.success) throw new ProcessingError("INVALID_SUMMARY");
     signal.throwIfAborted();
     await finish(
       {
+        ...previewUpdate,
         status: "ready",
         title: article.title,
         author: article.author,
         summaryOverview: parsed.data.overview,
         summaryKeyPoints: parsed.data.key_points,
         summaryModel: result.model,
-        promptVersion: SUMMARY_PROMPT_VERSION,
+        promptVersion:
+          content.type === "youtube"
+            ? VIDEO_PROMPT_VERSION
+            : SUMMARY_PROMPT_VERSION,
         generatedAt: new Date(),
         failureCode: null,
       },
@@ -334,6 +427,7 @@ export async function processContentJob(
             eq(quotaReservations.status, "reserved"),
           ),
         );
+    const failureCode = unknown ? "OUTCOME_UNKNOWN" : failure.code;
     const retry = !invoked && failure.retryable && task.attempts + 1 < 3;
     const keepVideoCache =
       task.kind === "youtube_refresh" &&
@@ -341,15 +435,23 @@ export async function processContentJob(
       content.metadataExpiresAt.getTime() > Date.now();
     await finish(
       {
-        status: keepVideoCache ? "ready" : retry ? "queued" : "failed",
-        failureCode: failure.code,
+        ...previewUpdate,
+        status:
+          task.kind === "youtube_refresh" &&
+          (keepVideoCache || content.summaryOverview)
+            ? content.status
+            : retry
+              ? "queued"
+              : "failed",
+        failureCode,
       },
       retry ? "retry_wait" : "failed",
       unknown ? "outcome_unknown" : "failed",
-      failure.code,
+      failureCode,
     );
     if (retry) throw new Error(failure.code); // pg-boss owns bounded delivery retries.
   } finally {
     releaseSummary?.();
+    await settleQuota(attempt.id, database);
   }
 }

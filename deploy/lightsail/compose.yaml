@@ -54,7 +54,7 @@ services:
   worker:
     <<: *app
     command: ["node", "dist/worker/index.js"]
-    stop_grace_period: 3m
+    stop_grace_period: 16m
     environment:
       DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL}
       CONTENT_PROCESSING_ENABLED: ${CONTENT_PROCESSING_ENABLED:-false}

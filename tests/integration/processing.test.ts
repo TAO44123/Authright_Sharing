@@ -102,6 +102,23 @@ it("A4 processes articles/videos, reserves quota, resumes once, fences stale wor
           text: "TEMPORARY_BODY_MUST_NOT_PERSIST",
           author: "Author",
         }),
+        audio: {
+          configured: true,
+          model: "fixture-model",
+          extract: vi.fn(async () => ({
+            notes: {
+              language: "en",
+              notes: ["TEMPORARY_AUDIO_NOTES_MUST_NOT_PERSIST"],
+              uncertainties: [],
+            },
+            model: "fixture-model",
+            inputTokens: 800,
+            outputTokens: 100,
+          })),
+        },
+        downloadAudio: vi.fn(async () =>
+          Buffer.from("AUDIO_BYTES_MUST_NOT_PERSIST"),
+        ),
         video: async () => ({
           title: "A video",
           videoDescription: "",
@@ -133,7 +150,7 @@ it("A4 processes articles/videos, reserves quota, resumes once, fences stale wor
       ]);
       const video = await seed("youtube");
       await processContentJob(video.jobId, deps);
-      expect(summarize).toHaveBeenCalledTimes(1);
+      expect(summarize).toHaveBeenCalledTimes(2);
       expect(
         (
           await db
@@ -141,7 +158,43 @@ it("A4 processes articles/videos, reserves quota, resumes once, fences stale wor
             .from(contents)
             .where(eq(contents.id, video.content.id))
         )[0],
-      ).toMatchObject({ status: "ready", videoDescription: "" });
+      ).toMatchObject({
+        status: "ready",
+        videoDescription: "",
+        summaryModel: "fixture-model",
+        promptVersion: "youtube-audio-en-v1",
+      });
+      const videoAttempt = (
+        await db
+          .select()
+          .from(attempts)
+          .where(eq(attempts.taskId, video.task.id))
+      )[0];
+      expect(
+        await db
+          .select()
+          .from(usageEvents)
+          .where(eq(usageEvents.attemptId, videoAttempt.id)),
+      ).toMatchObject([
+        {
+          service: "audio_extract",
+          invocationIndex: 1,
+          status: "succeeded",
+          inputTokens: 800,
+        },
+        {
+          service: "summary",
+          invocationIndex: 2,
+          status: "succeeded",
+          inputTokens: 100,
+        },
+      ]);
+      expect(summarize).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          sourceType: "youtube",
+          text: expect.stringContaining("TEMPORARY_AUDIO_NOTES"),
+        }),
+      );
       await db
         .update(settings)
         .set({ quotaEnabled: true, monthlyCallLimit: 1 });
@@ -151,8 +204,8 @@ it("A4 processes articles/videos, reserves quota, resumes once, fences stale wor
         (await db.select().from(tasks).where(eq(tasks.id, deferred.task.id)))[0]
           .state,
       ).toBe("deferred_quota");
-      expect(summarize).toHaveBeenCalledTimes(1);
-      await db.update(settings).set({ monthlyCallLimit: 2 });
+      expect(summarize).toHaveBeenCalledTimes(2);
+      await db.update(settings).set({ monthlyCallLimit: 4 });
       await maintainContent(boss, db);
       await maintainContent(boss, db);
       const resumed = await db
@@ -164,7 +217,7 @@ it("A4 processes articles/videos, reserves quota, resumes once, fences stale wor
         resumed.find((task) => task.generation === 2)!.jobId,
         deps,
       );
-      expect(summarize).toHaveBeenCalledTimes(2);
+      expect(summarize).toHaveBeenCalledTimes(3);
       await db.update(settings).set({ quotaEnabled: false });
       const freeTier = await seed();
       await processContentJob(freeTier.jobId, {
@@ -334,12 +387,16 @@ it("A4 processes articles/videos, reserves quota, resumes once, fences stale wor
         title: null,
         videoDescription: null,
         metadataExpiresAt: null,
+        status: "ready",
+        summaryOverview: "An English overview.",
       });
       const reservations = await db.select().from(quotaReservations);
       await db.update(settings).set({
         quotaEnabled: true,
         monthlyCallLimit:
-          reservations.filter((r) => r.status !== "released").length + 1,
+          reservations
+            .filter((r) => r.status !== "released")
+            .reduce((sum, r) => sum + r.units, 0) + 1,
       });
       const quotaAttempts = [];
       for (let i = 0; i < 2; i++) {
@@ -359,6 +416,146 @@ it("A4 processes articles/videos, reserves quota, resumes once, fences stale wor
         quotaAttempts.map((attempt) => reserveQuota(attempt.id, db)),
       );
       expect(admitted.filter(Boolean)).toHaveLength(1);
+      await db.update(settings).set({ quotaEnabled: false });
+      const partial = await seed("youtube");
+      const failsOnSummary = vi.fn(async () => {
+        throw new ProcessingError("SUMMARY_RATE_LIMITED");
+      });
+      await processContentJob(partial.jobId, {
+        ...deps,
+        summary: { ...deps.summary, summarize: failsOnSummary },
+      });
+      await processContentJob(partial.jobId, deps);
+      const partialAttempt = (
+        await db
+          .select()
+          .from(attempts)
+          .where(eq(attempts.taskId, partial.task.id))
+      )[0];
+      expect(
+        await db
+          .select()
+          .from(usageEvents)
+          .where(eq(usageEvents.attemptId, partialAttempt.id)),
+      ).toMatchObject([
+        { service: "audio_extract", status: "succeeded" },
+        { service: "summary", status: "failed" },
+      ]);
+      expect(failsOnSummary).toHaveBeenCalledTimes(1);
+      expect(
+        (
+          await db
+            .select()
+            .from(contents)
+            .where(eq(contents.id, partial.content.id))
+        )[0],
+      ).toMatchObject({
+        status: "failed",
+        title: "A video",
+        summaryOverview: null,
+        failureCode: "SUMMARY_RATE_LIMITED",
+      });
+
+      const extractionFailure = await seed("youtube");
+      const failedExtract = vi.fn(async () => {
+        throw new ProcessingError("SUMMARY_OUTCOME_UNKNOWN", false, true);
+      });
+      const summaryAfterFailure = vi.fn(
+        (input: Parameters<typeof deps.summary.summarize>[0]) =>
+          deps.summary.summarize(input),
+      );
+      await processContentJob(extractionFailure.jobId, {
+        ...deps,
+        audio: { ...deps.audio!, extract: failedExtract },
+        summary: { ...deps.summary, summarize: summaryAfterFailure },
+      });
+      await processContentJob(extractionFailure.jobId, deps);
+      const failedAttempt = (
+        await db
+          .select()
+          .from(attempts)
+          .where(eq(attempts.taskId, extractionFailure.task.id))
+      )[0];
+      expect(summaryAfterFailure).not.toHaveBeenCalled();
+      expect(failedExtract).toHaveBeenCalledTimes(1);
+      expect(
+        (
+          await db
+            .select()
+            .from(quotaReservations)
+            .where(eq(quotaReservations.attemptId, failedAttempt.id))
+        )[0],
+      ).toMatchObject({ units: 1, status: "consumed" });
+      expect(
+        await db
+          .select()
+          .from(usageEvents)
+          .where(eq(usageEvents.attemptId, failedAttempt.id)),
+      ).toMatchObject([{ status: "outcome_unknown", usageKnown: false }]);
+
+      const downloadFailure = await seed("youtube");
+      await processContentJob(downloadFailure.jobId, {
+        ...deps,
+        downloadAudio: async () => {
+          throw new ProcessingError("AUDIO_DOWNLOAD_FAILED");
+        },
+      });
+      const downloadAttempt = (
+        await db
+          .select()
+          .from(attempts)
+          .where(eq(attempts.taskId, downloadFailure.task.id))
+      )[0];
+      expect(
+        await db
+          .select()
+          .from(usageEvents)
+          .where(eq(usageEvents.attemptId, downloadAttempt.id)),
+      ).toHaveLength(0);
+
+      // Only one call of quota remains: reserve neither of the two video calls.
+      const allReservations = await db.select().from(quotaReservations);
+      await db.update(settings).set({
+        quotaEnabled: true,
+        monthlyCallLimit:
+          allReservations
+            .filter((r) => r.status !== "released")
+            .reduce((sum, r) => sum + r.units, 0) + 1,
+      });
+      const videoDeferred = await seed("youtube");
+      await processContentJob(videoDeferred.jobId, deps);
+      await maintainContent(boss, db);
+      expect(
+        await db
+          .select()
+          .from(tasks)
+          .where(eq(tasks.contentId, videoDeferred.content.id)),
+      ).toMatchObject([{ state: "deferred_quota" }]);
+      // Refreshes must not call a model or turn a failed summary into ready.
+      await db.update(settings).set({ quotaEnabled: false });
+      const refresh = await seed("youtube");
+      await db
+        .update(tasks)
+        .set({ kind: "youtube_refresh" })
+        .where(eq(tasks.id, refresh.task.id));
+      await db
+        .update(contents)
+        .set({ status: "failed", failureCode: "SUMMARY_RATE_LIMITED" })
+        .where(eq(contents.id, refresh.content.id));
+      const callsBeforeRefresh = summarize.mock.calls.length;
+      await processContentJob(refresh.jobId, deps);
+      expect(summarize).toHaveBeenCalledTimes(callsBeforeRefresh);
+      expect(
+        (
+          await db
+            .select()
+            .from(contents)
+            .where(eq(contents.id, refresh.content.id))
+        )[0],
+      ).toMatchObject({
+        status: "failed",
+        failureCode: "SUMMARY_RATE_LIMITED",
+      });
       const stored = JSON.stringify({
         contents: await db.select().from(contents),
         attempts: await db.select().from(attempts),
@@ -366,7 +563,7 @@ it("A4 processes articles/videos, reserves quota, resumes once, fences stale wor
         jobs: (await pool.query("select data, output from pgboss.job")).rows,
       });
       expect(stored).not.toMatch(
-        /TEMPORARY_BODY_MUST_NOT_PERSIST|secret-provider-error/,
+        /TEMPORARY_BODY_MUST_NOT_PERSIST|TEMPORARY_AUDIO_NOTES_MUST_NOT_PERSIST|AUDIO_BYTES_MUST_NOT_PERSIST|secret-provider-error/,
       );
     } finally {
       await boss.stop();

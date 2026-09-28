@@ -33,7 +33,9 @@ export default function ShareList({
                 <small className="eyebrow">
                   {share.source === "ai_article_summary"
                     ? "AI article summary"
-                    : "Video description"}
+                    : share.source === "ai_video_summary"
+                      ? "AI video summary"
+                      : "Video description"}
                 </small>
                 <p className="excerpt">
                   {share.excerpt}

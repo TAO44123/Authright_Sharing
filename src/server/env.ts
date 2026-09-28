@@ -82,6 +82,8 @@ export const workerEnvSchema = databaseEnvSchema
       .enum(["true", "false"])
       .default("false")
       .transform((value) => value === "true"),
+    YT_DLP_PATH: z.string().min(1).default("yt-dlp"),
+    FFMPEG_PATH: z.string().min(1).default("ffmpeg"),
     YOUTUBE_API_KEY: z.string().optional(),
     GEMINI_API_KEY: z.string().optional(),
     GEMINI_BILLING_TIER: z.enum(["free", "paid"]).optional(),

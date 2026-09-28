@@ -877,6 +877,8 @@ it("A3 keeps independent shares, safe DTOs, literal search, ownership and retry 
     .set({
       status: "ready",
       videoDescription: "",
+      summaryOverview: null,
+      summaryKeyPoints: null,
       metadataFetchedAt: new Date(),
       metadataExpiresAt: new Date(Date.now() + 86400000),
     })
@@ -898,6 +900,50 @@ it("A3 keeps independent shares, safe DTOs, literal search, ownership and retry 
   expect(expired.source).toBe("none");
   expect(expired.title).toBeNull();
   expect(expired.video_description).toBeNull();
+  // Audio summaries survive API metadata expiry and have their own MCP source.
+  await db
+    .update(contents)
+    .set({
+      summaryOverview: `Audio summary ${suffix}`,
+      summaryKeyPoints: ["One", "Two", "Three"],
+    })
+    .where(eq(contents.id, video.share.content_id));
+  const audioSummary = await getShare(actor, video.share.id);
+  expect(audioSummary).toMatchObject({
+    source: "ai_video_summary",
+    status: "ready",
+    article_summary: null,
+    video_description: null,
+    title: null,
+    can_retry: false,
+    video_summary: { overview: `Audio summary ${suffix}` },
+  });
+  expect(audioSummary.content_scope_note).toContain(
+    "visual content is not analyzed",
+  );
+  const foundVideo = await listShares(actor, {
+    query: `Audio summary ${suffix}`,
+    sharer_id: uid,
+  });
+  expect(foundVideo.items).toHaveLength(1);
+  expect(foundVideo.items[0]).toMatchObject({
+    source: "ai_video_summary",
+    video_summary: null,
+    excerpt: `Audio summary ${suffix}`,
+  });
+  await db
+    .update(contents)
+    .set({ summaryOverview: null, summaryKeyPoints: null })
+    .where(eq(contents.id, video.share.content_id));
+  await db
+    .update(tasks)
+    .set({ state: "completed" })
+    .where(eq(tasks.contentId, video.share.content_id));
+  expect((await getShare(actor, video.share.id)).can_retry).toBe(true);
+  const upgraded = await retryShare(actor, video.share.id, {
+    idempotency_key: `video-upgrade-${suffix}`,
+  });
+  expect(upgraded.share.status).toBe("queued");
 });
 
 it("uses the email local part for new and legacy blank names across shared display services", async () => {

@@ -9,13 +9,29 @@ export class ProcessingError extends Error {
     super(code);
   }
 }
-export type SummaryResult = {
-  summary: z.infer<typeof articleSummary>;
+export type ModelUsage = {
   model: string;
   inputTokens: number | null;
   outputTokens: number | null;
   providerRequestId?: string;
 };
+export type SummaryResult = ModelUsage & {
+  summary: z.infer<typeof articleSummary>;
+};
+export type AudioNotes = {
+  language: string;
+  notes: string[];
+  uncertainties: string[];
+};
+export interface AudioProvider {
+  readonly configured: boolean;
+  readonly model: string;
+  readonly pricing?: SummaryPricing;
+  extract(input: {
+    audio: Buffer;
+    signal: AbortSignal;
+  }): Promise<ModelUsage & { notes: AudioNotes }>;
+}
 export type SummaryPricing = {
   version: string;
   currency: "USD";
@@ -27,6 +43,7 @@ export interface SummaryProvider {
   readonly model: string;
   readonly pricing?: SummaryPricing;
   summarize(input: {
+    sourceType?: "article" | "youtube";
     title: string;
     text: string;
     attemptId: string;

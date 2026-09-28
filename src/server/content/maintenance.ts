@@ -1,4 +1,4 @@
-import { and, eq, inArray, lt, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { fromDrizzle, type PgBoss } from "pg-boss";
 import { db } from "../db/index.ts";
 import {
@@ -10,7 +10,7 @@ import {
   settings,
 } from "../db/schema.ts";
 import { CONTENT_QUEUE } from "../queue.ts";
-import { billingMonth } from "../quota.ts";
+import { billingMonth, settleQuota } from "../quota.ts";
 
 export async function maintainContent(boss: PgBoss, database = db) {
   // A single maintenance pass at a time; transaction-scoped advisory lock is
@@ -28,8 +28,8 @@ export async function maintainContent(boss: PgBoss, database = db) {
         embeddable: null,
         metadataFetchedAt: null,
         metadataExpiresAt: null,
-        status: "failed",
-        failureCode: "METADATA_EXPIRED",
+        status: sql`case when ${contents.summaryOverview} is not null then ${contents.status} else 'failed' end`,
+        failureCode: sql`case when ${contents.summaryOverview} is not null then ${contents.failureCode} else 'METADATA_EXPIRED' end`,
         updatedAt: new Date(),
       })
       .where(
@@ -88,6 +88,16 @@ export async function maintainContent(boss: PgBoss, database = db) {
           .where(
             and(eq(usageEvents.id, call.id), eq(usageEvents.status, "started")),
           );
+      const interrupted = await tx
+        .select({ id: attempts.id })
+        .from(attempts)
+        .where(
+          and(
+            eq(attempts.taskId, task.id),
+            eq(attempts.generation, task.generation),
+          ),
+        );
+      for (const item of interrupted) await settleQuota(item.id, tx);
       // Never blindly resend a paid request whose outcome cannot be recovered.
       await tx
         .update(tasks)
@@ -130,6 +140,15 @@ export async function maintainContent(boss: PgBoss, database = db) {
         .where(eq(tasks.state, "deferred_quota"))
         .for("update");
       for (const task of deferred) {
+        const [item] = await tx
+          .select({ type: contents.type })
+          .from(contents)
+          .where(eq(contents.id, task.contentId));
+        if (
+          setting.quotaEnabled &&
+          used + (item.type === "youtube" ? 2 : 1) > setting.monthlyCallLimit!
+        )
+          continue;
         await tx
           .update(tasks)
           .set({ state: "completed", finishedAt: new Date() })
@@ -166,7 +185,13 @@ export async function maintainContent(boss: PgBoss, database = db) {
       .where(
         and(
           eq(contents.type, "youtube"),
-          lt(contents.metadataFetchedAt, new Date(Date.now() - 29 * 86400000)),
+          or(
+            isNull(contents.metadataFetchedAt),
+            lt(
+              contents.metadataFetchedAt,
+              new Date(Date.now() - 29 * 86400000),
+            ),
+          ),
           sql`exists (select 1 from shares where shares.content_id = ${contents.id} and shares.withdrawn_at is null)`,
           sql`not exists (select 1 from content_tasks where content_tasks.content_id = ${contents.id} and content_tasks.state in ('queued','processing','retry_wait','deferred_quota'))`,
           sql`not exists (select 1 from content_tasks where content_tasks.content_id = ${contents.id} and content_tasks.kind = 'youtube_refresh' and content_tasks.created_at > now() - interval '6 hours')`,

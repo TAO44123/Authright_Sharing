@@ -1,5 +1,7 @@
 # Sharing 当前可执行契约（A2–A5）
 
+> 2026-09-28 更新：YouTube 处理改为下载临时音轨 → Gemini 信息提取 → 视频摘要；接口新增 `ai_video_summary` / `video_summary`，视频预留两次调用额度。本地数据库迁移已应用，Worker 已完成 Claude.ai 短视频和 Andrew Ng 长视频音频摘要落库；运行状态、完整行为与部署步骤见 [音轨 Worker](../YOUTUBE_AUDIO_WORKER.md)。
+
 源文件：`src/contracts/index.ts`。网页与 MCP 调用同一个 `src/server/shares.ts`，身份入口集中在 `auth-options.ts`、`http.ts`、`membership.ts`。
 
 ## 业务边界
@@ -55,11 +57,19 @@ Actor 的 userId 来自已验证 session 或 MCP token subject，不能由业务
 
 ## 输出与错误
 
-share DTO 返回分享者平台 ID/姓名、原始/规范 URL、UTC 时间、content ID/type/status、nullable title、来源与内容范围。`source` 为 `none`、`ai_article_summary` 或 `youtube_description`，`full_content_available` 恒为 false。空视频描述仍属于 `youtube_description`。文章摘要含英文概述和 3–5 条要点；接口能验证结构，真实英文质量待模型验收。列表返回最多 500 字符的 excerpt 和 truncated，详情返回保存的完整摘要或描述。查询不会触发抓取或模型调用。
+share DTO 返回分享者平台 ID/姓名、原始/规范 URL、UTC 时间、content ID/type/status、nullable title、来源与内容范围。`source` 为 `none`、`ai_article_summary`、`ai_video_summary` 或 `youtube_description`，`full_content_available` 恒为 false。无音频摘要且缓存有效时，空视频描述仍属于 `youtube_description`。文章详情使用 `article_summary`，视频音频摘要详情使用 `video_summary`，均含英文概述和 3–5 条要点；另一个摘要字段为 null。已有音频摘要优先决定 source/excerpt，作者描述仍可作为单独字段返回。列表两个摘要对象均为 null，保留 excerpt。视频 content_scope_note 明确只分析音频、未分析画面。列表返回最多 500 字符的 excerpt 和 truncated，详情返回保存的完整摘要或描述。查询不会触发抓取或模型调用。
 
 错误 schema：`INVALID_INPUT`、`UNAUTHENTICATED`、`MEMBER_DISABLED`、`FORBIDDEN`、`GRANT_REVOKED`、`NOT_FOUND`、`IDEMPOTENCY_CONFLICT`、`INVALID_CURSOR`、`CONFLICT`、`RATE_LIMITED`、`INTERNAL_ERROR`。REST 错误返回 `{error:{code,message,request_id}}`，同时发送 `X-Request-ID` 和 `Cache-Control: private, no-store`；MCP 工具业务错误使用 `isError=true`，认证失败在进入工具前由 HTTP 401/403 拒绝。
 
 URL 输入拒绝非 HTTP(S)、用户信息、超过 8 KiB、localhost 与私有/保留 IP，以及已知 YouTube 域名上没有合法视频 ID 的链接。A4 抓取器逐跳检查全部 DNS 地址并固定已验证 IP，限制重定向、传输/解压大小和总超时。处理模板默认暂停，开启方式与真实服务结果见 [A4 真实服务验收](A4_REAL_SERVICES.md)。
+
+## 音频摘要迁移与重试
+
+`0003_lively_ikaris` 允许 youtube 内容保存 summary 字段，文章仍不能保存 video_description；quota_reservations.units 允许 1–2。视频提取和摘要分别记录 usage_events 的 service/invocation_index。元数据过期不清除音频摘要，读取和搜索仍可使用摘要，但不返回过期标题、封面或作者描述。
+
+`can_retry` 对失败内容以及缺少摘要的历史 ready 视频为 true；后端仍检查分享所有权、活跃任务、冷却和幂等键。已有成功音频摘要不开放重新生成。本地迁移及 Worker 样本验收已完成；数据库迁移本身不会触发模型。
+
+失败码 `AUDIO_TOOLS_UNAVAILABLE` 表示主机工具不可执行；`AUDIO_UNAVAILABLE` 表示下载后没有可用音轨；`AUDIO_TOO_LARGE` 表示音轨超过当前大小限制；`AUDIO_UPLOAD_FAILED` 表示 Gemini 文件上传或就绪检查失败。页面将这些情况分别显示，不把大小限制提示成稍后重试。用户重试仍受失败后 60 秒冷却限制。
 
 ## A1 数据扩展
 

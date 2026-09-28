@@ -29,6 +29,7 @@ export default async function ShareDetail({
     throw e;
   }
   const profile = await accountProfile(actor);
+  const summary = share.article_summary ?? share.video_summary;
   return (
     <main className="detail">
       <Link href="/library">← Back to library</Link>
@@ -55,12 +56,19 @@ export default async function ShareDetail({
           : "Read the original article ↗"}
       </a>
       <p className="muted source-url">{share.original_url}</p>
-      {share.article_summary && (
+      {summary && (
         <section className="panel">
-          <h2>AI article summary</h2>
-          <p className="overview">{share.article_summary.overview}</p>
+          <h2>
+            {share.type === "youtube"
+              ? "AI video summary"
+              : "AI article summary"}
+          </h2>
+          {share.type === "youtube" && (
+            <p className="muted">Based on the video’s audio.</p>
+          )}
+          <p className="overview">{summary.overview}</p>
           <ul>
-            {share.article_summary.key_points.map((point, i) => (
+            {summary.key_points.map((point, i) => (
               <li key={i}>{point}</li>
             ))}
           </ul>

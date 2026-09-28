@@ -96,7 +96,7 @@ export const contents = pgTable(
     ),
     check(
       "contents_source_fields",
-      sql`(${t.type} = 'article' and ${t.videoDescription} is null) or (${t.type} = 'youtube' and ${t.summaryOverview} is null and ${t.summaryKeyPoints} is null and ${t.summaryModel} is null)`,
+      sql`${t.type} = 'youtube' or ${t.videoDescription} is null`,
     ),
     check(
       "contents_metadata_window",
@@ -357,7 +357,7 @@ export const quotaReservations = pgTable(
   },
   (t) => [
     index("quota_month_status_idx").on(t.billingMonth, t.status),
-    check("quota_units_valid", sql`${t.units} = 1`),
+    check("quota_units_valid", sql`${t.units} between 1 and 2`),
     check("quota_month_valid", sql`extract(day from ${t.billingMonth}) = 1`),
     check(
       "quota_status_valid",

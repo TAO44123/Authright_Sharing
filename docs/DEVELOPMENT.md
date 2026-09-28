@@ -1,15 +1,20 @@
 # Sharing — 第一版开发指南
 
-版本：v0.5  
-日期：2026-09-27  
-状态：A1–A5 本地流程与 A4 六条公开链接真实 API 验收已完成；部署发布继续按开发计划推进  
+> 2026-09-28 更新：YouTube 处理改为下载临时音轨 → Gemini 信息提取 → 视频摘要；接口新增 `ai_video_summary` / `video_summary`，视频预留两次调用额度。本地数据库迁移已应用，Worker 已启动，Claude.ai 样本音频摘要已成功落库；运行状态、完整行为与部署步骤见 [音轨 Worker](./YOUTUBE_AUDIO_WORKER.md)。
+
+版本：v0.6
+
+日期：2026-09-28
+
+状态：音频摘要代码、测试及本地迁移已完成；本地 Worker 已完成 Claude.ai 和 Andrew Ng 长视频摘要落库；音频版本尚未部署
+
 关联：[开发计划与私有分发](./DEVELOPMENT_PLAN.md) · [PRD](./PRD.md) · [技术设计](./TECHNICAL_DESIGN.md)
 
 ## 1. 使用方式与完成标准
 
 本文件维护工程结构、本地配置、验证策略和运维约定。任务划分、依赖、实施顺序及 Plugin 私有分发以 [开发计划](./DEVELOPMENT_PLAN.md) 为准；架构和接口语义以技术设计为准，产品边界以 PRD 为准。
 
-当前包含成员管理、分享查询/撤回/重试、内容处理接口与故障恢复测试、桌面/手机网页流程。Worker 默认暂停；用户决定先完成接口和测试，真实摘要供应商适配器及模型/YouTube 验收稍后完成。真实 Google 登录及 Codex 查询有历史证据，不能当作本轮真实内容验收。生产部署和私有 Plugin 发布尚未完成。当前结果见 [A2–A5 验收记录](./validation/A2_A5_PLATFORM.md)，历史基础见 [S0/S1 核对记录](./validation/S0_S1_AUDIT.md)。
+当前包含成员管理、分享查询/撤回/重试、文章摘要、YouTube 音频摘要、故障恢复、网页与 MCP。模板默认关闭消费；本地 `.env` 已启用处理。2026-09-28 23:23 UTC 检查时 Web 与 Worker 均在运行；主机音频工具已配置，Claude.ai 样本 generation=3 和 Andrew Ng 长视频 generation=5 均完成真实音频摘要并落库。此前 Gemini 503 为历史失败记录。音频版本尚未部署到 Lightsail。历史 A4 文章和视频元数据验收与本次音频验收分开记录，见 [音轨验证](./validation/YOUTUBE_AUDIO_GEMINI.md)。
 
 每个阶段完成时：提交可运行代码及必要迁移，执行对应验证，记录结果和剩余限制，更新阶段复选框。真实第三方验证需记录日期、服务/客户端版本、实际结果；mock 测试只能证明应用内行为。
 
@@ -101,7 +106,9 @@ A/B 是开发职责划分；服务端业务与 MCP 仍在同一应用仓库。Pl
 
 A1 新增数据库迁移测试会创建并清理随机命名的 `sharing_test_migration_<uuid>` 数据库，测试角色需要 CREATEDB；生产角色不需要。`pnpm build` 固定使用 Webpack，并执行客户端秘密扫描。详见 [A1 验收记录](./validation/A1_FOUNDATION.md)。
 
-当前启动顺序（详细命令见根目录 README）：安装锁定依赖 → 复制环境变量模板并填入本地配置 → 启动本地 PostgreSQL → 执行迁移 → bootstrap 管理员 → 分别启动 Web 和 Worker。
+当前启动顺序（详细命令见根目录 README）：安装锁定依赖及音频工具 → 首次复制环境变量模板并填入配置 → 启动本地 PostgreSQL → 执行迁移 → 首次 bootstrap 管理员 → 分别启动 Web 和 Worker。已有 `.env` 不覆盖；`pnpm dev` 不会启动 Worker。迁移不会消费队列。
+
+本地已完成 `0003_lively_ikaris`：视频摘要约束和两单位预留生效；长视频修订后队列超时更新为 1020 秒，等待任务可由迁移脚本同步更新。主机音频工具路径已配置，`pnpm dev:worker` 已运行并完成 Claude.ai 短视频及 Andrew Ng 长视频样本；启动步骤及验收快照见 [音轨 Worker](./YOUTUBE_AUDIO_WORKER.md#本地运行状态与启动检查)。
 
 开发用 OAuth 回调必须与 Google 应用配置一致。自动化测试使用隔离测试身份夹具；测试身份入口不得进入生产构建，不能靠一个公开请求头绕过认证。真实 Google/OAuth 客户端验证保留独立人工或受控联调记录。
 
@@ -117,11 +124,12 @@ A1 新增数据库迁移测试会创建并清理随机命名的 `sharing_test_mi
 | `MCP_RESOURCE_URL` | Web | 对外 `/mcp` URL，与 Token audience 匹配 |
 | `CURSOR_SIGNING_SECRET` | Web | 分页游标签名，与认证 secret 分离 |
 | `YOUTUBE_API_KEY` | Worker | YouTube Data API v3；仅开放所需 API 能力，限制使用范围 |
-| `GEMINI_API_KEY` | Worker | Gemini Developer API；文章使用 Gemini 3.5 Flash-Lite |
+| `GEMINI_API_KEY` | Worker | Gemini Developer API；文章摘要及视频音频提取/摘要使用 Gemini 3.5 Flash-Lite |
 | `GEMINI_BILLING_TIER` | Worker / A4 验收脚本 | `free` 或 `paid`；处理开启时必填，按 AI Studio 项目档位填写；本地当前为 `free` |
 | `CONTENT_PROCESSING_ENABLED` | Worker | 默认 false；true 开启处理及对账，可能消费已有队列 |
 | 摘要价格快照 | Worker / 数据库 | 模型、档位对应美元单价和版本写入每次用量事件；Free tier 已知用量为零，旧 Paid 等价估算不代表账单 |
 | `WORKER_CONCURRENCY`、`SUMMARY_CONCURRENCY` | Worker | 初始 2 / 1 |
+| `YT_DLP_PATH`、`FFMPEG_PATH` | Worker | 默认 yt-dlp / ffmpeg；本地主机需安装工具或设置可执行文件绝对路径，Docker 镜像已包含 |
 | `LOG_LEVEL` | Web、Worker | 生产日志不输出原始请求体 |
 
 可选的产品月额度开关与上限已有数据库设置，默认关闭，当前不提供管理页面；它不代表 Gemini 项目的 RPM/TPM/RPD。试用中如频繁触限，再从 AI Studio 核对实际限制并实现供应商窗口控制。管理员邮箱通过 bootstrap 参数提供，不作为长期开放的提权入口。
@@ -247,7 +255,7 @@ codex mcp login sharing
 
 | 现象 | 排查与处理 |
 | --- | --- |
-| 已分享但长时间处理中 | 检查 Worker 心跳、队列、任务租约和对账结果；通过受控重试恢复，不直接重复调用模型 |
+| 页面一直显示 Generating summary / Generating video summary | 当前界面对 queued 和 processing 使用相同提示；先查任务 state、attempts、started_at 和 Worker 进程。queued 且 attempts=0 表示尚未开始，不代表 Gemini 卡住 |
 | Google 登录被拒绝 | 核对 callback/base URL、Google 返回的 email_verified 及精确公司邮箱域名；不再要求预先添加成员 |
 | MCP 连不上或重复要求授权 | 核对 HTTPS、well-known、issuer/resource、注册方式、回调、客户端版本和 scope |
 | Codex 显示 Reconnect / notLoggedIn | 优先点击重连提示或 MCP 设置中的认证入口，在 Sharing 确认 Allow access 后重试；已有 Sharing 会话无需退出。单独 app-server 脚本显示 notLoggedIn 仅说明该进程没有可用授权，不能据此推断桌面不会显示重连提示 |
@@ -255,7 +263,10 @@ codex mcp login sharing
 | 链接一直是 queued | 检查 Worker 是否已启动、`CONTENT_PROCESSING_ENABLED=true` 以及两个 API key；不必反复提交链接 |
 | 撤销 Agent 连接后仍能访问 | 检查授权撤销查询或缓存；网页登录及其他未撤销连接可以继续使用 |
 | 模型调用结果未知 | 查询供应商可用请求记录并关联 attempt；可恢复结果则保存，否则显示明确失败供人工重试 |
-| YouTube 配额或 API 故障 | 保留分享、限制重试、到期清理缓存；不切换到视频模型补写 |
+| YouTube API、音轨下载或 Gemini 故障 | 查看失败阶段和错误码，保留分享，不用标题或 Description 冒充音频摘要；Gemini 429/503 不自动重复调用 |
+| AUDIO_TOOLS_UNAVAILABLE | 检查本地主机的 YT_DLP_PATH / FFMPEG_PATH；只构建了 Docker 镜像不会让主机自动拥有这些命令 |
+| AUDIO_UNAVAILABLE / AUDIO_TOO_LARGE | 前者表示没有生成可下载音轨；后者表示源音轨、临时工作目录或 MP3 超过容量上限。Andrew Ng 样本旧版本因 yt-dlp 跳过超限文件而误报前者，长视频修订后已成功处理 |
+| AUDIO_UPLOAD_FAILED | 检查 Gemini Files API 的上传、就绪状态和服务响应；文件上传失败不触发摘要生成，已取得文件 ID 时会尝试删除远端文件 |
 | 数据库故障 | 写请求明确失败；恢复备份后执行迁移和授权/任务/过期缓存对账，再开放流量 |
 | 额度耗尽 | 确认调用次数与预留；管理员调整上限或等待月切换；不删除任务绕过额度 |
 

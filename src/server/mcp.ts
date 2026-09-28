@@ -83,7 +83,7 @@ export const mcpHandler = requireMcpAuth(
           "get_share",
           {
             description:
-              "Read a saved article summary or author video description with its original source URL and processing status. Full articles and transcripts are unavailable. Reading never starts processing.",
+              "Read a saved article summary, video audio summary, or author video description with its original source URL and processing status. Video summaries analyze audio only, not visuals. Full articles and transcripts are unavailable. Reading never starts processing.",
             inputSchema: contracts.get_share.input,
             outputSchema: contracts.get_share.output,
             annotations: { readOnlyHint: true, openWorldHint: false },
@@ -126,7 +126,8 @@ export const mcpHandler = requireMcpAuth(
                 ? undefined
                 : {
                     scopes: ["shares:read", "members:read"],
-                    errorDescription: "members:read is required to find members",
+                    errorDescription:
+                      "members:read is required to find members",
                   },
           },
           (input) => wrap(() => listMembers(actor, input)),
@@ -149,7 +150,8 @@ export const mcpHandler = requireMcpAuth(
                 ? undefined
                 : {
                     scopes: ["shares:read", "shares:write"],
-                    errorDescription: "shares:write is required to withdraw links",
+                    errorDescription:
+                      "shares:write is required to withdraw links",
                   },
           },
           (input) => wrap(() => withdrawShare(actor, input.share_id)),

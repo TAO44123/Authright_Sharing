@@ -64,6 +64,7 @@ export const shareOutput = z.object({
   ]),
   content_scope_note: z.string(),
   article_summary: articleSummary.nullable(),
+  video_summary: articleSummary.nullable(),
   video_description: z.string().nullable(),
   video_id: z.string().nullable(),
   author: z.string().nullable(),
@@ -82,7 +83,12 @@ export const shareOutput = z.object({
   type: z.enum(["article", "youtube"]),
   title: z.string().nullable(),
   status: z.enum(["queued", "processing", "ready", "failed", "deferred_quota"]),
-  source: z.enum(["none", "ai_article_summary", "youtube_description"]),
+  source: z.enum([
+    "none",
+    "ai_article_summary",
+    "ai_video_summary",
+    "youtube_description",
+  ]),
   full_content_available: z.literal(false),
 });
 export const listSharesOutput = z.object({

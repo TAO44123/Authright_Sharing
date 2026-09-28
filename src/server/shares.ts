@@ -71,16 +71,14 @@ function dto(
     r.type === "youtube" &&
     (!r.metadataExpiresAt || r.metadataExpiresAt.getTime() <= Date.now());
   const summary =
-    r.type === "article" &&
-    r.status === "ready" &&
-    r.summaryOverview &&
-    r.summaryKeyPoints
+    r.status === "ready" && r.summaryOverview && r.summaryKeyPoints
       ? { overview: r.summaryOverview, key_points: r.summaryKeyPoints }
       : null;
   const description =
     r.type === "youtube" && !expired ? r.videoDescription : null;
   const text = summary?.overview ?? description;
-  const status = expired && r.status === "ready" ? "failed" : r.status;
+  const status =
+    expired && !summary && r.status === "ready" ? "failed" : r.status;
   return shareOutput.parse({
     ...r,
     title: expired ? null : r.title,
@@ -95,20 +93,29 @@ function dto(
     status,
     processing_status: status,
     source: summary
-      ? "ai_article_summary"
+      ? r.type === "youtube"
+        ? "ai_video_summary"
+        : "ai_article_summary"
       : description !== null
         ? "youtube_description"
         : "none",
-    article_summary: detail ? summary : null,
+    article_summary: detail && r.type === "article" ? summary : null,
+    video_summary: detail && r.type === "youtube" ? summary : null,
     video_description: detail ? description : null,
     excerpt: text?.slice(0, 500) ?? null,
     truncated: Boolean(text && text.length > 500),
     failure_code:
-      expired && r.status === "ready" ? "METADATA_EXPIRED" : r.failure_code,
-    can_retry: r.status === "failed",
+      expired && !summary && r.status === "ready"
+        ? "METADATA_EXPIRED"
+        : r.failure_code,
+    can_retry:
+      r.status === "failed" ||
+      (r.status === "ready" && r.type === "youtube" && !summary),
     withdrawn: Boolean(r.withdrawnAt),
     content_scope_note:
-      "Saved summary or author description only. Full articles and video transcripts are not available; visit the source for further details.",
+      r.type === "youtube" && summary
+        ? "AI summary of the video audio only; visual content is not analyzed. Full audio and transcripts are not stored."
+        : "Saved summary or author description only. Full articles and video transcripts are not available; visit the source for further details.",
     full_content_available: false,
   });
 }
@@ -317,6 +324,8 @@ export async function listShares(actor: Actor, input: unknown = {}) {
         escaped
           ? or(
               ilike(shares.originalUrl, `%${escaped}%`),
+              ilike(contents.summaryOverview, `%${escaped}%`),
+              sql`${contents.summaryKeyPoints}::text ilike ${`%${escaped}%`}`,
               and(
                 or(
                   eq(contents.type, "article"),
@@ -324,8 +333,6 @@ export async function listShares(actor: Actor, input: unknown = {}) {
                 ),
                 or(
                   ilike(contents.title, `%${escaped}%`),
-                  ilike(contents.summaryOverview, `%${escaped}%`),
-                  sql`${contents.summaryKeyPoints}::text ilike ${`%${escaped}%`}`,
                   ilike(contents.videoDescription, `%${escaped}%`),
                 ),
               ),
@@ -422,10 +429,17 @@ export async function retryShare(actor: Actor, id: string, input: unknown) {
       .from(contents)
       .where(eq(contents.id, share.contentId))
       .for("update");
-    if (content.status !== "failed")
+    if (
+      content.status !== "failed" &&
+      !(
+        content.status === "ready" &&
+        content.type === "youtube" &&
+        !content.summaryOverview
+      )
+    )
       throw new AppError(
         "CONFLICT",
-        "Only failed content can be retried.",
+        "Only failed content or videos without an audio summary can be processed.",
         409,
       );
     const previous = await tx
@@ -446,7 +460,7 @@ export async function retryShare(actor: Actor, id: string, input: unknown) {
     )
       throw new AppError(
         "RATE_LIMITED",
-        "Wait before retrying this content.",
+        "Please wait 60 seconds after a failed attempt before retrying.",
         429,
       );
     const generation = (previous[0]?.generation ?? 0) + 1;

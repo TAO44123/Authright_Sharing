@@ -2,7 +2,7 @@
 
 适用仓库：[TAO44123/Authright_Sharing](https://github.com/TAO44123/Authright_Sharing)。本文准备部署步骤及配置；不表示 AWS 环境已经上线。命令除特别说明外，均在 **Lightsail 的 Ubuntu SSH 终端**执行。
 
-本地验证（2026-09-28，Docker Desktop/Linux ARM64）：Compose 配置解析、Docker 镜像构建、空库迁移、管理员初始化、Web 健康检查、OAuth discovery 运行时域名、Worker 暂停模式启动、Caddy 配置校验及 PostgreSQL 备份/新库恢复均通过。未验证 AWS 实例、公网证书、生产 Google 登录或真实供应商请求。构建时 Better Auth 会尝试访问占位数据库并输出连接拒绝日志，但构建退出码为 0，运行时连接真实测试库和 discovery 检查通过；后续可单独优化这一构建日志问题。
+最初的本地部署演练记录（2026-09-28，Docker Desktop/Linux ARM64）：Compose 配置解析、Docker 镜像构建、空库迁移、管理员初始化、Web 健康检查、OAuth discovery 运行时域名、Worker 暂停模式启动、Caddy 配置校验及 PostgreSQL 备份/新库恢复均通过。该次本地演练未验证 AWS 实例、公网证书、生产 Google 登录或真实供应商请求；它不替代后来独立的部署检查。构建时 Better Auth 会尝试访问占位数据库并输出连接拒绝日志，但构建退出码为 0，运行时连接真实测试库和 discovery 检查通过；后续可单独优化这一构建日志问题。
 
 ## 1. 目标和准备项
 
@@ -126,7 +126,7 @@ dc ps
 
 任何一步失败都应先处理再继续。`ops` 运行现有 Drizzle 迁移及 pg-boss 队列初始化；bootstrap 应在管理员首次 Google 登录前执行。若该邮箱已经是普通成员，脚本会拒绝静默提升权限。
 
-镜像同时包含 Web、编译后的 Worker 和迁移工具；生产启动命令直接使用容器环境变量，无需容器内 `.env`。Web 在容器网络监听 `0.0.0.0:3000`，仅 Caddy 发布公网端口。为方便首版运维，镜像保留构建及迁移依赖，后续可再缩减体积。
+镜像同时包含 Web、编译后的 Worker、迁移工具和 yt-dlp/EJS/FFmpeg；生产启动命令直接使用容器环境变量，无需容器内 `.env`。Web 在容器网络监听 `0.0.0.0:3000`，仅 Caddy 发布公网端口。为方便首版运维，镜像保留构建及迁移依赖，后续可再缩减体积。
 
 构建只使用假配置，真实凭据在容器启动时注入。`node:24-bookworm-slim` 与 `caddy:2` 是可变标签，首次验证通过后记录实际镜像 ID/digest；应用每次使用 Git SHA 标签，保留上一版本镜像。后续基础镜像更新应单独验证后部署。
 
@@ -152,7 +152,7 @@ dc logs --tail=100 web worker caddy
 - 将用于远程测试的 plugin/MCP 配置 URL 改为 `https://sharing.example.com/mcp`，重新完成 OAuth，并实际执行 `list_shares`、`share_link`、`get_share`。当前仓库本地 plugin 配置仍指向 localhost；远程打包、分发属于下一步工作。
 - 在维护窗口执行主机重启，重新 SSH 后 `dc ps` 并再次检查 health、登录和 Worker 心跳；确认数据仍在。
 
-基础服务验收后，再在 `/etc/sharing/lightsail.env` 填入真实 Gemini、YouTube API key 和正确 `GEMINI_BILLING_TIER`，改 `CONTENT_PROCESSING_ENABLED=true`，执行 `dc up -d worker`。这会处理既有积压任务。分别提交一篇文章、一条 YouTube 链接验证结果；YouTube 当前处理作者 Description，音轨分析尚未接入生产。Gemini 之前出现过 503，需重新验证供应商可用性，不能仅凭 Web 健康判定摘要可用。
+基础服务验收后，再在 `/etc/sharing/lightsail.env` 填入真实 Gemini、YouTube API key 和正确 `GEMINI_BILLING_TIER`，改 `CONTENT_PROCESSING_ENABLED=true`，执行 `dc up -d worker`。这会处理既有积压任务。分别提交一篇文章、一条 YouTube 链接验证结果；长视频还须验证 Gemini Files API 上传、模型引用和远端文件清理。Worker 使用音轨提取和 Gemini 两阶段摘要；部署前须执行新迁移及队列期限更新，重建含 yt-dlp/EJS/FFmpeg 的镜像，并确认临时工作目录有足够空间，见 [音轨处理](YOUTUBE_AUDIO_WORKER.md)。Claude.ai 短视频与 Andrew Ng 110 分钟视频已在本地 Worker 成功落库；Lightsail 上的音轨下载、Files API 和摘要仍须单独验收。当前音频版本尚未部署到 Lightsail，不能把本地迁移当作生产已更新。
 
 ## 7. 后续更新和回滚
 
@@ -222,7 +222,8 @@ dc exec -T postgres psql -U sharing -d "$SHARING_RESTORE_DB" \
 | Caddy 502 / Web unhealthy | `dc logs web`、`dc ps`、数据库密码/迁移、真实环境变量 |
 | Google redirect mismatch | Console 回调 URI 与实际域名必须逐字一致 |
 | MCP 401 | 未授权请求通常预期 401；检查生产 discovery、客户端重新 OAuth、权限和连接是否已撤销 |
-| 内容一直 queued | processing 开关、Worker 进程和心跳、两种供应商 key |
+| 内容一直 queued | 检查 Worker 进程、worker_ready 的 contentConsumption、心跳和 API key；Web 在线或开关为 true 不代表 Worker 已运行。界面的 Generating 提示也可能只是排队 |
+| 音频工具不可用 | 检查是否重建含 yt-dlp/EJS/FFmpeg 的新镜像；本地主机工具路径与容器路径互不通用 |
 | Gemini 429 / 503 | 分别检查配额或服务可用性；503 本身不能证明免费额度耗尽 |
 | 构建被 killed | 实例内存/磁盘；必要时升级实例或改为 CI 构建镜像 |
 | 重建后丢数据 | 是否用了开发 Compose、不同 project 名称或误删 volume |
