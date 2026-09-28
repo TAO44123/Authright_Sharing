@@ -1,0 +1,98 @@
+name: sharing
+
+x-app: &app
+  image: ${SHARING_IMAGE:?Set SHARING_IMAGE}
+  init: true
+  restart: unless-stopped
+  logging: &logging
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+  depends_on:
+    postgres:
+      condition: service_healthy
+
+services:
+  postgres:
+    image: postgres:17.9
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: sharing
+      POSTGRES_DB: sharing
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sharing -d sharing"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    logging: *logging
+
+  web:
+    <<: *app
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL}
+      APP_URL: https://${SHARING_DOMAIN:?Set SHARING_DOMAIN}
+      BETTER_AUTH_URL: https://${SHARING_DOMAIN}
+      MCP_RESOURCE_URL: https://${SHARING_DOMAIN}/mcp
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?Set BETTER_AUTH_SECRET}
+      CURSOR_SIGNING_SECRET: ${CURSOR_SIGNING_SECRET:?Set CURSOR_SIGNING_SECRET}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?Set GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:?Set GOOGLE_CLIENT_SECRET}
+      GOOGLE_WORKSPACE_DOMAIN: ${GOOGLE_WORKSPACE_DOMAIN:-authright.com}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  worker:
+    <<: *app
+    command: ["node", "dist/worker/index.js"]
+    stop_grace_period: 3m
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL}
+      CONTENT_PROCESSING_ENABLED: ${CONTENT_PROCESSING_ENABLED:-false}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_BILLING_TIER: ${GEMINI_BILLING_TIER:-free}
+      YOUTUBE_API_KEY: ${YOUTUBE_API_KEY:-}
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-2}
+      SUMMARY_CONCURRENCY: ${SUMMARY_CONCURRENCY:-1}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+
+  ops:
+    <<: *app
+    profiles: ["ops"]
+    restart: "no"
+    command: ["node", "--import", "tsx", "scripts/migrate.ts"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL}
+      GOOGLE_WORKSPACE_DOMAIN: ${GOOGLE_WORKSPACE_DOMAIN:-authright.com}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    environment:
+      SHARING_DOMAIN: ${SHARING_DOMAIN:?Set SHARING_DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      web:
+        condition: service_healthy
+    logging: *logging
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

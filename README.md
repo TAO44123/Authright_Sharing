@@ -90,4 +90,6 @@ For a deliberate first-connection test, see the scoped reset procedure in [DEVEL
 
 ## Next stages
 
-See [development plan](docs/DEVELOPMENT_PLAN.md). The five MCP tools and local Codex Plugin packaging are in place. A6 quota enhancements are deferred; production operations belong to the deployment stage. HTTPS hosting and private repository creation remain deferred. Distribution remains **deployed services + a private plugin repository**; no public marketplace release is assumed.
+See the [Lightsail deployment runbook](docs/DEPLOY_LIGHTSAIL.md) for production Docker Compose, Caddy HTTPS, migrations, backups and updates. The application repository is connected to GitHub; the runbook does not mean the service is already deployed.
+
+See [development plan](docs/DEVELOPMENT_PLAN.md). The five MCP tools and local Codex Plugin packaging are in place. A6 quota enhancements are deferred; production operations belong to the deployment stage. HTTPS deployment and private plugin distribution remain next steps. Distribution remains **deployed services + a private plugin repository**; no public marketplace release is assumed.
