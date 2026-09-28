@@ -1,0 +1,22 @@
+{
+  "name": "sharing",
+  "version": "0.1.0+codex.20260928041720",
+  "description": "Find and share team links through the local Sharing MCP service.",
+  "author": {
+    "name": "Sharing"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Sharing",
+    "shortDescription": "Find and share team links.",
+    "longDescription": "Connect Codex to the local Sharing service to browse team links, save a URL, and withdraw your own shares.",
+    "developerName": "Sharing",
+    "category": "Productivity",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": "What has the team shared in the last seven days?"
+  },
+  "mcpServers": "./.mcp.json"
+}

@@ -1,0 +1,43 @@
+name: Application checks
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17.9
+        env:
+          POSTGRES_USER: sharing
+          POSTGRES_PASSWORD: sharing_ci
+          POSTGRES_DB: sharing_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U sharing -d sharing_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://sharing:sharing_ci@127.0.0.1:5432/sharing_test
+      TEST_DATABASE_URL: postgresql://sharing:sharing_ci@127.0.0.1:5432/sharing_test
+      APP_URL: http://localhost:3000
+      BETTER_AUTH_URL: http://localhost:3000
+      MCP_RESOURCE_URL: http://localhost:3000/mcp
+      BETTER_AUTH_SECRET: ci-only-auth-secret-never-use-in-deployment-12345
+      CURSOR_SIGNING_SECRET: ci-only-cursor-secret-never-use-in-deployment-67890
+      GOOGLE_WORKSPACE_DOMAIN: authright.com
+      GOOGLE_CLIENT_ID: ci-placeholder-client
+      GOOGLE_CLIENT_SECRET: ci-placeholder-google-secret
+      LOG_LEVEL: silent
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.21.0'
+      - run: npm install --global pnpm@11.25.0
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+      - run: pnpm test:integration
+      - run: pnpm build
+      - run: pnpm test:worker
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:e2e

@@ -1,0 +1,45 @@
+{
+  "checked_at": "2026-09-28T05:26:52.441Z",
+  "client": "Codex app-server (installed CLI)",
+  "model_turn_run": false,
+  "server": "sharing",
+  "tools_passed": [
+    "list_shares",
+    "get_share",
+    "list_members"
+  ],
+  "share": {
+    "share_id": "bd011df5-d6aa-49dc-acdc-97ad9a197060",
+    "sharer": {
+      "id": "go0y3GmQi2M2JOp4BkhbKhaqAthYoEPK",
+      "name": "Tao Xu"
+    },
+    "normalized_url": "https://www.better-auth.com/docs/introduction",
+    "processing_status": "ready",
+    "content_scope_note": "Saved summary or author description only. Full articles and video transcripts are not available; visit the source for further details.",
+    "article_summary": null,
+    "video_description": null,
+    "video_id": null,
+    "author": null,
+    "thumbnail_url": null,
+    "embeddable": null,
+    "excerpt": "Better Auth is a comprehensive, framework-agnostic TypeScript authentication and authorization framework designed with an extensive plugin ecosystem and built-in features.",
+    "truncated": false,
+    "failure_code": null,
+    "can_retry": false,
+    "withdrawn": false,
+    "id": "bd011df5-d6aa-49dc-acdc-97ad9a197060",
+    "content_id": "6a6b5795-ddd3-469a-8f45-43e1b55d0539",
+    "original_url": "https://www.better-auth.com/docs/introduction",
+    "shared_at": "2026-09-27T20:10:00.126Z",
+    "shared_by": {
+      "id": "go0y3GmQi2M2JOp4BkhbKhaqAthYoEPK",
+      "name": "Tao Xu"
+    },
+    "type": "article",
+    "title": "Introduction | Better Auth",
+    "status": "ready",
+    "source": "ai_article_summary",
+    "full_content_available": false
+  }
+}

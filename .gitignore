@@ -1,0 +1,23 @@
+node_modules/
+.pnpm-store/
+.next/
+dist/
+.env
+.env.*
+!.env.example
+coverage/
+playwright-report/
+test-results/
+*.tsbuildinfo
+.DS_Store
+
+# Local logs, database backups, and private key files
+*.log
+backups/
+*.dump
+*.backup
+*.sql.gz
+*.sqlite
+*.sqlite3
+*.pem
+*.key
