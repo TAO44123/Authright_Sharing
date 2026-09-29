@@ -4,9 +4,9 @@
 
 版本：v0.6
 
-日期：2026-09-28
+日期：2026-09-29（UTC）
 
-状态：A1–A5 与 URL 非流式视频修订代码已实现；生产旧音频镜像尚未升级，当前验收见 URL 记录
+状态：A1–A5 与 URL 非流式视频修订已实现；URL 修订提交 `f9cd079` 已推送 GitHub main，生产旧音频镜像尚未升级
 
 关联：[PRD](./PRD.md) · [技术设计](./TECHNICAL_DESIGN.md) · [开发指南](./DEVELOPMENT.md)
 
@@ -161,7 +161,11 @@ A1 本地验收已完成：19 项单元测试、11 项集成测试、Web/Worker 
 - [x] 新视频只预留 1 单位，usage_events 保留缓存及模态计数，旧两阶段计量不改写。
 - [x] 新旧摘要按 prompt_version 标注来源，排队与生成分开显示；Docker/Compose 移除音频下载依赖。
 - [x] 单元、PostgreSQL 集成和构建通过；真实新版 Worker 与浏览器结果见 [当前验收](./validation/YOUTUBE_URL_GEMINI.md)。
-- [ ] 发布到 GitHub 后，在服务器拉取、构建、备份、迁移并启动新镜像，再验收正常队列任务。
+- [x] 新版 Worker 短视频约 25 秒、110 分钟长视频约 27 秒成功落库；每条一次调用、单单位预留。本地应用 `0004_slow_menace`。
+- [x] 提交并推送 GitHub `main`：[f9cd079](https://github.com/TAO44123/Authright_Sharing/commit/f9cd079eb22cc2cedd15c67fb33dafdf10a5c02c)，包含 Worker、迁移、部署配置、CLI、测试及文档。
+- [ ] 在服务器拉取最新 `main`、构建、备份、迁移并启动新镜像，再验收正常队列任务。
+
+清理范围：新 Worker 已移除 yt-dlp 工具与代理配置，Dockerfile 已删除安装步骤；本机 `.env` 旧路径、`.local/audio-tools`、历史音频模块及测试仍保留。该改动不等于删除所有旧文件，进一步清理尚未执行；见 [范围表](./YOUTUBE_AUDIO_WORKER.md#旧配置的移除范围)。
 
 ### A5 — 网页体验
 

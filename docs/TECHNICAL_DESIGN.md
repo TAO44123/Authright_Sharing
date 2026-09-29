@@ -4,9 +4,9 @@
 
 版本：v0.5
 
-日期：2026-09-28
+日期：2026-09-29（UTC）
 
-状态：文章和 YouTube URL 非流式视频摘要设计已实现；验收及尚未部署的边界见视频 Worker 文档
+状态：文章和 YouTube URL 非流式视频摘要设计已实现；URL 实现基线 `f9cd079` 已推送 GitHub main，生产镜像升级仍待执行
 
 需求依据：[产品需求文档](./PRD.md)  
 实施顺序：[开发计划与私有分发](./DEVELOPMENT_PLAN.md)  
@@ -38,7 +38,7 @@ S1 实现注记：依赖已锁定，采用 Better Auth/MCP 1.7.6、官方 MCP SD
 | 异步任务 | pg-boss + 独立 Worker | 队列使用同一 PostgreSQL；应用保留可查询的处理状态 |
 | 文章提取 | 安全 HTTP 抓取 + Readability + 不执行脚本的 DOM 解析 | 首版不默认运行浏览器渲染；依据真实样本决定是否增加抓取服务 |
 | YouTube | YouTube Data API + Gemini YouTube URL + 嵌入播放器 | 作者描述原样保存，URL 经一次非流式模型调用生成独立摘要 |
-| 模型 | 单供应商、单模型、薄适配器 | 供应商和型号待真实文章评测与凭据配置 |
+| 模型 | Gemini 3.5 Flash-Lite、薄适配器 | 文章使用文本输入；视频使用 YouTube URL 非流式一次调用，短/长视频已真实隔离验证 |
 | 测试 | Vitest、真实 PostgreSQL 集成测试、Playwright | 验证权限、事务、队列恢复和关键用户流程 |
 | 部署 | AWS Lightsail + Docker Compose | Caddy、Web、Worker、PostgreSQL；域名 sharing.authright.com，视频版本升级步骤见部署指南 |
 
@@ -221,6 +221,8 @@ Readability 是正文提取器，不保证所有网页可提取；提取服务�
 
 处理顺序：YouTube 元数据 → 原子预留一次模型调用 → 规范 YouTube URL 直接传给 Gemini `generateContent` → 校验完整 STOP、可访问标识和摘要 schema → 保存最终摘要。模型结合语音及采样画面，长视频降低 fps；不传标题/描述冒充视频依据，不比对音视频时长，不要求时间戳。新摘要使用 `youtube-url-en-v1`，历史音频摘要保留旧版本和来源说明。参数、限制与部署见 [视频 Worker](./YOUTUBE_AUDIO_WORKER.md)。
 
+新 Worker 不读取音轨工具路径或下载代理；Dockerfile/Compose 已删除相关安装与配置。历史 `youtube-audio.ts`、`gemini-files.ts`、音频提取 adapter、诊断脚本和测试仍保留供旧流程排查，不参与当前 Worker 处理。已生成的音频摘要及计量记录按原版本继续读取，不因代码发布转换来源。运行配置与历史文件的保留范围见 [范围表](./YOUTUBE_AUDIO_WORKER.md#旧配置的移除范围)。
+
 通过 `videos.list` 请求 `snippet,contentDetails,status`，保存可取得的标题、频道、封面 URL、Description、时长和嵌入状态。API Key 仅在 Worker，API 无结果或不可访问时保留原链接并标记预览失败。[YouTube videos.list](https://developers.google.com/youtube/v3/docs/videos/list)
 
 Description 允许为空，非空时按原语言保存为纯文本。链接展示需限制安全协议；不执行其中 HTML。页面明确标注 `Video description`，提供播放器和始终可见的 `Watch on YouTube`。API 的可嵌入标识只是提示，播放器运行时错误也要回退到链接。
@@ -333,6 +335,7 @@ Token 和请求数作为主要可观察用量单独记录。未知用量用 null
 ## 10. 部署、运维与数据生命周期
 
 - 同一版本构建 Web 和 Worker，各自启动；Worker 为持续运行服务，不依赖请求结束后的后台回调。
+- 本轮 URL Worker 基线 [f9cd079](https://github.com/TAO44123/Authright_Sharing/commit/f9cd079eb22cc2cedd15c67fb33dafdf10a5c02c) 已推送 GitHub；本地已应用 `0004`，最近确认的生产镜像仍为 `sharing:cdca1f0`。生产更新须从 GitHub 拉取、构建、备份、停旧服务、迁移再启动新镜像；独立 API 探测不等于生产队列验收。
 - 生产、测试的数据库和 OAuth 凭据隔离；Google redirect URI、Better Auth base URL、MCP resource 均由正式域名配置。
 - 模型与 YouTube Key 只给 Worker；认证 Secret 只给需要签发/验证凭据的服务。客户端 bundle 不含密钥。
 - 迁移作为单独发布步骤运行一次；应用采用兼容旧版本的增量 schema 变更，先迁移再发服务。失败时回滚应用镜像，不盲目反向迁移数据。
@@ -358,9 +361,9 @@ Token 和请求数作为主要可观察用量单独记录。未知用量用 null
 | MCP OAuth 与 SDK | 已锁定 Better Auth 1.7.6 / SDK 2.1.0；本地 Codex 有成功证据 | 补齐清理后的 CLI 复验及三客户端完整记录 |
 | pg-boss + Drizzle | 事务入队与回滚测试通过；S1 不消费任务 | A4 补齐 Worker 消费与崩溃恢复测试 |
 | 文章提取 | Readability 起步 | 代表性来源样本有结果和失败分类 |
-| 摘要模型 | 待选 | 结构化输出、英文质量、成本与数据处理设置评估完成 |
+| 摘要模型 | Gemini 3.5 Flash-Lite 已接入；文章及 URL 短/长视频有真实结果 | 继续抽查质量和实际项目额度，不把样本成功当作所有来源保证 |
 | YouTube API | 采用 | API 凭据可用，缓存维护及嵌入回退通过 |
-| 托管环境 | Railway 候选 | 确定平台、区域、备份、预算和域名 |
+| 托管环境 | AWS Lightsail + Docker Compose；sharing.authright.com，固定 IP 174.129.205.232 | 既有部署记录见部署手册；URL Worker 镜像升级和正常队列验收待执行 |
 | 业务配置 | 本地 authright.com、测试管理员、Google 凭据已配置 | 公司用户自动加入；生产配置与正式产品名待确认 |
 
 配置缺失不阻止 schema、业务测试和页面开发；不能用 mock 结果冒充真实登录、API 或客户端验收。与 PRD 范围发生冲突时先修订设计并明确记录，不通过实现悄悄改变产品。

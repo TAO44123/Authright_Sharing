@@ -65,6 +65,8 @@ URL 输入拒绝非 HTTP(S)、用户信息、超过 8 KiB、localhost 与私有/
 
 ## 视频摘要迁移与重试
 
+对应实现基线 [f9cd079](https://github.com/TAO44123/Authright_Sharing/commit/f9cd079eb22cc2cedd15c67fb33dafdf10a5c02c) 已推送 GitHub main。本地迁移和短/长视频处理已验证；生产尚未更新新镜像，以下契约说明新版代码行为。
+
 `0003_lively_ikaris` 允许 youtube 保存摘要并允许历史 quota_reservations.units 为 1–2；`0004_slow_menace` 新增 nullable `usage_details`、`cached_input_price_per_million`。新 URL 视频任务只执行一次 `video_summary` 调用和单单位预留，旧两阶段音频记录保留。元数据过期不清除摘要或搜索能力，但不返回过期 API 元数据。
 
 `can_retry` 对失败内容及缺少摘要的历史 ready 视频为 true；仍检查所有权、活跃任务、冷却和幂等键。已有成功摘要不开放重新生成，迁移本身不触发模型。手动重试仍受 60 秒冷却限制。

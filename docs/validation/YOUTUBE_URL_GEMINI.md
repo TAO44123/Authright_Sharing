@@ -43,6 +43,18 @@
 
 ## 发布边界
 
-新版源码、Docker/Compose、数据库迁移和文档已配套修改，随本次代码发布提供。Lightsail 仍运行旧音频镜像 `sharing:cdca1f0`，尚未执行新版生产迁移和镜像替换。下一步按 [部署手册](../DEPLOY_LIGHTSAIL.md#7-后续更新和回滚) 在服务器拉取、构建、备份、停止旧服务、迁移、启动、验收。
+新版源码、Docker/Compose、数据库迁移、CLI、测试和文档已在 [f9cd079](https://github.com/TAO44123/Authright_Sharing/commit/f9cd079eb22cc2cedd15c67fb33dafdf10a5c02c) 提交并成功推送 GitHub `main`。
+
+| 环节 | 状态及证据边界 |
+| --- | --- |
+| 非流式 API | 现有 Lightsail 容器短/长视频均 HTTP 200 |
+| 新 Worker 处理 | 本地一次性数据库短视频 25,276 ms、长视频 26,756 ms 均落库成功；不等于生产常驻进程领取任务 |
+| 本地数据库 | 已应用 `0004_slow_menace`，迁移不消费队列 |
+| GitHub | `main` 已接收实现提交 `f9cd079` |
+| 生产 | 最近确认镜像为旧音频版 `sharing:cdca1f0`；URL 版本迁移、镜像替换与正常队列验收待执行 |
+
+下一步按 [部署手册](../DEPLOY_LIGHTSAIL.md#7-后续更新和回滚) 在服务器拉取最新 `main`、构建、备份、停止旧服务、迁移、启动、验收；取实际 HEAD 作为镜像标签。GitHub 发布不会自动替换现有生产镜像。
+
+yt-dlp 清理范围也已核对：新 Worker schema、模板、Dockerfile 和 Compose 不再使用旧工具/代理；本机 `.env` 两个旧工具路径、`.local/audio-tools`、旧音频模块及测试仍保留。完整范围见 [视频 Worker](../YOUTUBE_AUDIO_WORKER.md#旧配置的移除范围)，本次文档同步未进一步删除这些历史文件。
 
 原理和限制：[Gemini 视频/YouTube URL 输入](https://ai.google.dev/gemini-api/docs/video-understanding)、[价格](https://ai.google.dev/gemini-api/docs/pricing)。公开视频可访问性、上下文及项目配额仍适用；采样画面和摘要输出需要质量抽查。

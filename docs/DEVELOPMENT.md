@@ -4,9 +4,9 @@
 
 版本：v0.6
 
-日期：2026-09-28
+日期：2026-09-29（UTC）
 
-状态：URL 非流式视频摘要代码、缓存用量迁移及测试已完成；生产新镜像尚未发布，验收见当前 URL 记录
+状态：URL 非流式视频摘要及配套迁移已在 `f9cd079` 提交并推送 GitHub main；本地迁移及短/长视频隔离处理已通过，生产新镜像尚未部署
 
 关联：[开发计划与私有分发](./DEVELOPMENT_PLAN.md) · [PRD](./PRD.md) · [技术设计](./TECHNICAL_DESIGN.md)
 
@@ -110,6 +110,8 @@ A1 新增数据库迁移测试会创建并清理随机命名的 `sharing_test_mi
 
 当前迁移到 `0004_slow_menace`，新增 nullable 缓存用量与价格字段，不修改历史摘要和两单位记录。新代码启动前运行 `pnpm db:migrate`，再重启 Worker；队列期限保持 1020 秒。启动及验收边界见 [视频 Worker](./YOUTUBE_AUDIO_WORKER.md#本地运行状态与启动检查)。
 
+本轮代码基线为 [f9cd079](https://github.com/TAO44123/Authright_Sharing/commit/f9cd079eb22cc2cedd15c67fb33dafdf10a5c02c)，已推送 GitHub；部署继续按服务器拉取最新 `main`、构建、备份、迁移和替换镜像执行。开发库已应用 `0004`，不表示生产数据库也已升级；最近确认的生产镜像仍为 `sharing:cdca1f0`。
+
 开发用 OAuth 回调必须与 Google 应用配置一致。自动化测试使用隔离测试身份夹具；测试身份入口不得进入生产构建，不能靠一个公开请求头绕过认证。真实 Google/OAuth 客户端验证保留独立人工或受控联调记录。
 
 ### 4.2 环境变量与外部配置
@@ -130,6 +132,8 @@ A1 新增数据库迁移测试会创建并清理随机命名的 `sharing_test_mi
 | 摘要价格快照 | Worker / 数据库 | 模型、档位对应美元单价和版本写入每次用量事件；Free tier 已知用量为零，旧 Paid 等价估算不代表账单 |
 | `WORKER_CONCURRENCY`、`SUMMARY_CONCURRENCY` | Worker | 初始 2 / 1 |
 | `LOG_LEVEL` | Web、Worker | 生产日志不输出原始请求体 |
+
+`YT_DLP_PATH`、`FFMPEG_PATH`、`YOUTUBE_PROXY_URL` 已从 Worker schema、模板和部署配置移除。本机 `.env` 仍有前两个旧路径，`.local/audio-tools` 与历史音频模块/测试仍在；新 Worker 不使用它们。删除旧路径时仅删除对应行，不覆盖整份 `.env`。完整范围见 [旧配置的移除范围](./YOUTUBE_AUDIO_WORKER.md#旧配置的移除范围)。
 
 可选的产品月额度开关与上限已有数据库设置，默认关闭，当前不提供管理页面；它不代表 Gemini 项目的 RPM/TPM/RPD。试用中如频繁触限，再从 AI Studio 核对实际限制并实现供应商窗口控制。管理员邮箱通过 bootstrap 参数提供，不作为长期开放的提权入口。
 
@@ -264,7 +268,7 @@ codex mcp login sharing
 | 模型调用结果未知 | 查询供应商可用请求记录并关联 attempt；可恢复结果则保存，否则显示明确失败供人工重试 |
 | YouTube API 或 Gemini URL 视频输入故障 | 查看失败阶段和错误码，保留分享，不用标题或 Description 冒充视频摘要；Gemini 429/503 不自动重复调用 |
 | 历史 AUDIO_* 错误 | 旧下载流程保留的记录；新版不再下载音轨，升级 Worker 后可按正常入口手动重试 |
-| VIDEO_UNAVAILABLE | Gemini 无法访问视频；核对公开可访问性，不以标题/描述替代摘要。调用已发送时仍计量，不自动重放 |
+| VIDEO_UNAVAILABLE | YouTube API 或 Gemini 无法访问视频；核对公开可访问性，不以标题/描述替代摘要。Gemini 调用已发送时仍计量，不自动重放 |
 | 数据库故障 | 写请求明确失败；恢复备份后执行迁移和授权/任务/过期缓存对账，再开放流量 |
 | 额度耗尽 | 确认调用次数与预留；管理员调整上限或等待月切换；不删除任务绕过额度 |
 

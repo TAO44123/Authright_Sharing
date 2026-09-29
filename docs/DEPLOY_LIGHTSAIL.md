@@ -8,7 +8,15 @@
 
 最初的本地部署演练记录（2026-09-28，Docker Desktop/Linux ARM64）：Compose 配置解析、Docker 镜像构建、空库迁移、管理员初始化、Web 健康检查、OAuth discovery 运行时域名、Worker 暂停模式启动、Caddy 配置校验及 PostgreSQL 备份/新库恢复均通过。该次本地演练未验证 AWS 实例、公网证书、生产 Google 登录或真实供应商请求；它不替代后来独立的部署检查。构建时 Better Auth 会尝试访问占位数据库并输出连接拒绝日志，但构建退出码为 0，运行时连接真实测试库和 discovery 检查通过；后续可单独优化这一构建日志问题。
 
-2026-09-29 当前更新：固定 IP 为 `174.129.205.232`，域名为 `sharing.authright.com`。现有容器的短/长视频非流式 URL 探测均成功；新版 Worker 和 `0004` 迁移已在代码中准备，尚未部署。下一次更新按第 7 节从 GitHub 拉取后发布，不直接改生产源码。
+2026-09-29 当前更新：固定 IP 为 `174.129.205.232`，域名为 `sharing.authright.com`。URL Worker 代码已提交并推送 GitHub `main`：[f9cd079](https://github.com/TAO44123/Authright_Sharing/commit/f9cd079eb22cc2cedd15c67fb33dafdf10a5c02c)。现有容器的短/长视频非流式 URL 探测及本地新版 Worker 隔离落库测试均成功；本地已应用 `0004`。最近确认的生产镜像仍为 `sharing:cdca1f0`，新版生产迁移与镜像替换尚未执行。下一次更新按第 7 节从 GitHub 拉取后发布，不直接改生产源码。
+
+| 环节 | 本轮状态 |
+| --- | --- |
+| GitHub 代码 | URL Worker 已推送 `main`，实现基线 `f9cd079` |
+| 本地数据库 | 已应用 `0004_slow_menace` |
+| 真实处理验证 | 隔离短视频约 25 秒、110 分钟长视频约 27 秒，均为一次调用、单单位预留 |
+| 生产代码/数据库更新 | 待拉取、构建、备份、停旧服务、迁移和替换镜像 |
+| 新 Worker 正常队列验收 | 待生产更新后验证，不能以独立 API 探测代替 |
 
 ## 1. 目标和准备项
 
@@ -164,16 +172,21 @@ dc logs --tail=100 web worker caddy
 
 每次发布先查看工作区和当前镜像，构建成功后再开始短暂维护窗口：
 
+本轮实现基线为 `f9cd079`，已在 GitHub。拉取最新 `main` 后确认该提交包含在当前 HEAD 中，再按实际 HEAD 构建镜像；后续文档提交可以有更新的 SHA。
+
 ```bash
 cd /opt/sharing
 git status --short
 dc images
 git pull --ff-only origin main
+git merge-base --is-ancestor f9cd079 HEAD
 SHARING_RELEASE=$(git rev-parse --short HEAD)
 sudo docker build -f deploy/lightsail/Dockerfile -t "sharing:$SHARING_RELEASE" .
 ```
 
 工作区有改动时先核对，不使用 reset 强行覆盖。记录旧 Git SHA、旧镜像标签；按第 8 节做备份，然后：
+
+升级 URL Worker 时，运行既有 ops 迁移入口应用 `0004_slow_menace`，队列期限仍为 1020 秒。可从 `/etc/sharing/lightsail.env` 删去旧 `YT_DLP_PATH`、`FFMPEG_PATH`、`YOUTUBE_PROXY_URL` 行；保留 Gemini/YouTube API key、档位、处理开关和其他凭据。新配置的移除范围见 [视频 Worker](YOUTUBE_AUDIO_WORKER.md#旧配置的移除范围)。旧镜像依赖会随镜像替换退出使用，不因 Git pull 自动消失。
 
 ```bash
 dc stop web worker
