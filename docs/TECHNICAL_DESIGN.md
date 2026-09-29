@@ -6,7 +6,7 @@
 
 日期：2026-09-29（UTC）
 
-状态：文章和 YouTube URL 非流式视频摘要设计已实现；URL 实现基线 `f9cd079` 已推送 GitHub main，生产镜像升级仍待执行
+状态：文章和 YouTube URL 非流式视频摘要设计已实现；URL 实现基线 `f9cd079` 已推送 GitHub main，生产已部署 `sharing:6581554`、应用 `0004` 并通过服务器真实 Worker 视频队列验收
 
 需求依据：[产品需求文档](./PRD.md)  
 实施顺序：[开发计划与私有分发](./DEVELOPMENT_PLAN.md)  
@@ -335,7 +335,7 @@ Token 和请求数作为主要可观察用量单独记录。未知用量用 null
 ## 10. 部署、运维与数据生命周期
 
 - 同一版本构建 Web 和 Worker，各自启动；Worker 为持续运行服务，不依赖请求结束后的后台回调。
-- 本轮 URL Worker 基线 [f9cd079](https://github.com/TAO44123/Authright_Sharing/commit/f9cd079eb22cc2cedd15c67fb33dafdf10a5c02c) 已推送 GitHub；本地已应用 `0004`，最近确认的生产镜像仍为 `sharing:cdca1f0`。生产更新须从 GitHub 拉取、构建、备份、停旧服务、迁移再启动新镜像；独立 API 探测不等于生产队列验收。
+- 本轮 URL Worker 基线 [f9cd079](https://github.com/TAO44123/Authright_Sharing/commit/f9cd079eb22cc2cedd15c67fb33dafdf10a5c02c) 已推送 GitHub。服务器拉取至 `6581554`，完成构建、备份、停旧服务、迁移后启用同版本 Web/Worker `sharing:6581554`；本地及生产均已应用 `0004`。实际编译 Worker 在服务器一次性库中领取并完成短/长视频 pg-boss 任务，正式历史记录原样保留；证据见 [URL 验收](./validation/YOUTUBE_URL_GEMINI.md)。
 - 生产、测试的数据库和 OAuth 凭据隔离；Google redirect URI、Better Auth base URL、MCP resource 均由正式域名配置。
 - 模型与 YouTube Key 只给 Worker；认证 Secret 只给需要签发/验证凭据的服务。客户端 bundle 不含密钥。
 - 迁移作为单独发布步骤运行一次；应用采用兼容旧版本的增量 schema 变更，先迁移再发服务。失败时回滚应用镜像，不盲目反向迁移数据。
@@ -363,7 +363,7 @@ Token 和请求数作为主要可观察用量单独记录。未知用量用 null
 | 文章提取 | Readability 起步 | 代表性来源样本有结果和失败分类 |
 | 摘要模型 | Gemini 3.5 Flash-Lite 已接入；文章及 URL 短/长视频有真实结果 | 继续抽查质量和实际项目额度，不把样本成功当作所有来源保证 |
 | YouTube API | 采用 | API 凭据可用，缓存维护及嵌入回退通过 |
-| 托管环境 | AWS Lightsail + Docker Compose；sharing.authright.com，固定 IP 174.129.205.232 | 既有部署记录见部署手册；URL Worker 镜像升级和正常队列验收待执行 |
+| 托管环境 | AWS Lightsail + Docker Compose；sharing.authright.com，固定 IP 174.129.205.232 | URL Worker `sharing:6581554` 已上线；迁移、health、discovery、心跳及服务器真实队列验收通过，见部署手册 |
 | 业务配置 | 本地 authright.com、测试管理员、Google 凭据已配置 | 公司用户自动加入；生产配置与正式产品名待确认 |
 
 配置缺失不阻止 schema、业务测试和页面开发；不能用 mock 结果冒充真实登录、API 或客户端验收。与 PRD 范围发生冲突时先修订设计并明确记录，不通过实现悄悄改变产品。

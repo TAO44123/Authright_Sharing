@@ -6,7 +6,7 @@
 
 状态：产品范围已包含基于语音和采样画面的视频摘要；运行状态和验收边界见视频 Worker 文档
 
-实现进度：URL 非流式视频摘要及配套迁移已在 [f9cd079](https://github.com/TAO44123/Authright_Sharing/commit/f9cd079eb22cc2cedd15c67fb33dafdf10a5c02c) 推送 GitHub main；本地短/长视频真实隔离处理已成功，生产升级和正常队列验收待执行。运行状态见 [视频 Worker](./YOUTUBE_AUDIO_WORKER.md)，避免把需求已实现视为生产已部署。
+实现进度：URL 非流式视频摘要及配套迁移已在 [f9cd079](https://github.com/TAO44123/Authright_Sharing/commit/f9cd079eb22cc2cedd15c67fb33dafdf10a5c02c) 推送 GitHub main；生产已部署 `sharing:6581554` 并应用 `0004`。服务器真实 Worker 在一次性库中领取短/长视频任务并生成摘要，正式历史分享保留。运行状态见 [视频 Worker](./YOUTUBE_AUDIO_WORKER.md)；远程客户端和私有安装体验仍须独立验收。
 
 说明：Sharing 为当前项目工作名称。本文使用中文描述需求；产品界面及生成的摘要默认使用英文。
 

@@ -8,15 +8,20 @@
 
 最初的本地部署演练记录（2026-09-28，Docker Desktop/Linux ARM64）：Compose 配置解析、Docker 镜像构建、空库迁移、管理员初始化、Web 健康检查、OAuth discovery 运行时域名、Worker 暂停模式启动、Caddy 配置校验及 PostgreSQL 备份/新库恢复均通过。该次本地演练未验证 AWS 实例、公网证书、生产 Google 登录或真实供应商请求；它不替代后来独立的部署检查。构建时 Better Auth 会尝试访问占位数据库并输出连接拒绝日志，但构建退出码为 0，运行时连接真实测试库和 discovery 检查通过；后续可单独优化这一构建日志问题。
 
-2026-09-29 当前更新：固定 IP 为 `174.129.205.232`，域名为 `sharing.authright.com`。URL Worker 代码已提交并推送 GitHub `main`：[f9cd079](https://github.com/TAO44123/Authright_Sharing/commit/f9cd079eb22cc2cedd15c67fb33dafdf10a5c02c)。现有容器的短/长视频非流式 URL 探测及本地新版 Worker 隔离落库测试均成功；本地已应用 `0004`。最近确认的生产镜像仍为 `sharing:cdca1f0`，新版生产迁移与镜像替换尚未执行。下一次更新按第 7 节从 GitHub 拉取后发布，不直接改生产源码。
+2026-09-29 当前更新：固定 IP 为 `174.129.205.232`，域名为 `sharing.authright.com`。服务器已从 GitHub 拉取至 [6581554](https://github.com/TAO44123/Authright_Sharing/commit/6581554efa52684890138fd402e50ac56e783a60)（包含 URL Worker 实现基线 [f9cd079](https://github.com/TAO44123/Authright_Sharing/commit/f9cd079eb22cc2cedd15c67fb33dafdf10a5c02c)），构建并启用同版本 Web/Worker `sharing:6581554`，应用 `0004_slow_menace`。生产 HTTPS health、两份 OAuth discovery 和 Worker 心跳通过；在服务器新镜像的一次性数据库中，真实编译 Worker 领取并完成短视频及约 110 分钟长视频 pg-boss 任务。正式两条分享原样保留。
 
 | 环节 | 本轮状态 |
 | --- | --- |
 | GitHub 代码 | URL Worker 已推送 `main`，实现基线 `f9cd079` |
 | 本地数据库 | 已应用 `0004_slow_menace` |
-| 真实处理验证 | 隔离短视频约 25 秒、110 分钟长视频约 27 秒，均为一次调用、单单位预留 |
-| 生产代码/数据库更新 | 待拉取、构建、备份、停旧服务、迁移和替换镜像 |
-| 新 Worker 正常队列验收 | 待生产更新后验证，不能以独立 API 探测代替 |
+| 本地真实处理验证 | 隔离短视频约 25 秒、110 分钟长视频约 27 秒，均为一次调用、单单位预留 |
+| 生产代码/数据库更新 | 已部署 `sharing:6581554`，应用 `0004`，总计 5 项迁移；迁移前后业务表行数和指纹一致 |
+| 新 Worker 正常队列验收 | 新镜像实际 Worker 在服务器一次性库中领取并完成两条真实任务；各一次调用、单单位消费，临时库已删除 |
+| 迁移前备份 | dump 目录检查、离机复制和 SHA-256 一致性通过；生产恢复演练和每日自动备份尚未完成 |
+
+本次备份为 `/home/ubuntu/sharing-backups/sharing-pre-6581554-20260929T033814Z.dump`，本机副本为 `.local/deployments/6581554-20260929/sharing-pre-6581554-20260929T033814Z.dump`（权限 0600、Git 忽略）。两端 SHA-256 均为 `4427a0f0f2c55c25a5c87c518b6e960cf0d9276c85a9d6a92c4eae34a480e9f7`。生产环境配置快照保存在 `/etc/sharing/lightsail.env.pre-6581554-20260929T033814Z`，受 root 私有权限保护，不导出凭据。正式库的 shares、contents、content_tasks、processing_attempts、usage_events、quota_reservations 在迁移前后核对一致；新增的两个 usage 字段允许 NULL。
+
+运行应用镜像 ID 为 `sha256:a68d071c064ef81f7e8abf48862947ea211475ec7e36be21330b6ef39a0f98dc`，构建使用的 Node 基础镜像 digest 为 `sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6`。运行配置保留原 API keys、Free tier、处理开关（true）、Worker 并发 2 / 摘要并发 1；服务器配置无旧下载工具或代理变量。新镜像未安装旧音频工具，旧镜像保留用于回滚。队列详情及证据边界见 [URL 验收](validation/YOUTUBE_URL_GEMINI.md#lightsail-新镜像的真实队列验收)。此次未重新执行 Google 登录或远程 MCP 客户端授权验收。
 
 ## 1. 目标和准备项
 
@@ -132,8 +137,8 @@ sudoedit /etc/sharing/lightsail.env
 # 把 SHARING_IMAGE 改成上一步显示的标签。
 dc config --quiet
 dc up -d --wait postgres
-dc run --rm ops
-dc run --rm ops node --import tsx scripts/bootstrap.ts tao.xu@authright.com
+dc run --rm ops < /dev/null
+dc run --rm ops node --import tsx scripts/bootstrap.ts tao.xu@authright.com < /dev/null
 dc up -d --wait web worker caddy
 dc ps
 ```
@@ -193,11 +198,13 @@ dc stop web worker
 # 停止写入后再做一次第 8 节数据库备份，留作迁移前恢复点。
 sudoedit /etc/sharing/lightsail.env
 # 将 SHARING_IMAGE 改为新标签，其他值保留。
-dc run --rm ops
+dc run --rm ops < /dev/null
 dc up -d --wait web worker caddy
 ```
 
 重新执行第 6 节验收。维护期间 Caddy 可能返回 502，不是零停机发布。
+
+通过 SSH 自动执行多步维护脚本时，先将脚本保存为服务器文件，再用 `ssh ... 'bash /path/to/deploy.sh' < /dev/null` 执行；不要把整段脚本作为 `bash -s` 的标准输入同时交给未隔离 stdin 的 `dc exec -T` / `dc run`。非交互命令显式指定 `< /dev/null`，恢复或 SQL 输入则使用明确文件/heredoc。本次首次尝试中 `pg_dump` 消耗了 SSH 脚本输入，导致停止旧服务后后续步骤未执行；确认未迁移后立即恢复旧服务，再改为服务器脚本文件完成部署。自动维护脚本应在失败或意外提前退出时恢复服务，成功标记必须在迁移和健康检查全部通过后写入。
 
 若新代码失败且数据库 schema 与旧代码兼容，将 `SHARING_IMAGE` 改回旧标签，再 `dc up -d --wait web worker caddy`。若迁移不兼容，停止 Web/Worker，按第 8 节恢复迁移前备份到新数据库，将 `DATABASE_URL` 指向该数据库，再启动旧镜像。该恢复会失去备份之后的写入，需要明确恢复时间点。保留旧源码/Compose 版本，以便同时回退配置变更。
 
@@ -213,7 +220,7 @@ Docker volume 只保证容器重建后仍有数据，不能替代异机备份。
 install -d -m 700 /home/ubuntu/sharing-backups
 umask 077
 SHARING_BACKUP="/home/ubuntu/sharing-backups/sharing-$(date -u +%Y%m%dT%H%M%SZ).dump"
-dc exec -T postgres pg_dump -U sharing -d sharing -Fc --no-owner --no-acl > "$SHARING_BACKUP"
+dc exec -T postgres pg_dump -U sharing -d sharing -Fc --no-owner --no-acl < /dev/null > "$SHARING_BACKUP"
 test -s "$SHARING_BACKUP"
 dc exec -T postgres pg_restore --list < "$SHARING_BACKUP" > /dev/null
 ```
@@ -224,11 +231,11 @@ dc exec -T postgres pg_restore --list < "$SHARING_BACKUP" > /dev/null
 
 ```bash
 SHARING_RESTORE_DB="sharing_restore_$(date -u +%Y%m%d%H%M%S)"
-dc exec -T postgres createdb -U sharing "$SHARING_RESTORE_DB"
+dc exec -T postgres createdb -U sharing "$SHARING_RESTORE_DB" < /dev/null
 dc exec -T postgres pg_restore -U sharing -d "$SHARING_RESTORE_DB" \
   --exit-on-error --no-owner --no-acl < "$SHARING_BACKUP"
 dc exec -T postgres psql -U sharing -d "$SHARING_RESTORE_DB" \
-  -c 'SELECT count(*) FROM members;'
+  -c 'SELECT count(*) FROM members;' < /dev/null
 ```
 
 真正恢复服务时：停 Web/Worker，记录原 DATABASE_URL，把 URL 的数据库名改为恢复库；确认代码镜像与备份 schema 匹配后，启动服务并验收。不要在未核对版本时自动跑新迁移。保留原库，确认恢复成功后再安排清理演练库。

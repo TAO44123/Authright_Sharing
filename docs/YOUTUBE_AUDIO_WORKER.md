@@ -2,7 +2,7 @@
 
 2026-09-29：按用户要求改为 YouTube URL → Gemini 非流式 `generateContent` → 一次生成英文摘要。文件名保留以兼容既有文档链接；旧下载音轨流程的实测证据保存在 [历史音频验收](validation/YOUTUBE_AUDIO_GEMINI.md)。
 
-代码已于本轮提交并推送到 GitHub `main`：[f9cd079](https://github.com/TAO44123/Authright_Sharing/commit/f9cd079eb22cc2cedd15c67fb33dafdf10a5c02c)。本地迁移和真实隔离短/长视频处理已通过；生产仍待按部署手册升级镜像与迁移。下方状态是本轮记录，不是实时监控。
+代码已于本轮提交并推送到 GitHub `main`：[f9cd079](https://github.com/TAO44123/Authright_Sharing/commit/f9cd079eb22cc2cedd15c67fb33dafdf10a5c02c)。Lightsail 已从 GitHub 拉取至 `6581554`，部署同版本 Web/Worker `sharing:6581554` 并应用 `0004`。服务器真实 Worker 短/长视频队列验收通过。下方状态是本轮记录，不是实时监控。
 
 ## 行为
 
@@ -29,7 +29,7 @@
 
 ## 本地运行状态与启动检查
 
-本轮诊断已在 Lightsail 当前容器中验证短视频和约 110 分钟长视频的非流式 URL 请求均成功；这不代表旧容器已替换为新 Worker。新版 Worker 的隔离短/长视频测试也已落库成功；本地已应用 `0004`，生产新镜像尚未发布。完整验收结果见 [URL 验证](validation/YOUTUBE_URL_GEMINI.md)。
+本地新版 Worker 短/长视频隔离处理已通过；生产已运行 `sharing:6581554`，本地和生产均已应用 `0004`。在服务器新镜像的一次性库中，实际 `/app/dist/worker/index.js` 领取 pg-boss 任务并完成短视频及约 110 分钟长视频摘要，各一次调用、单单位消费。正式 Worker 处理已启用并持续有心跳；正式两条历史分享保留，旧失败记录仍需按原入口手动重试。完整证据及验收边界见 [URL 验证](validation/YOUTUBE_URL_GEMINI.md)。
 
 1. 配置 `GEMINI_API_KEY`、`GEMINI_BILLING_TIER`、`YOUTUBE_API_KEY`、`CONTENT_PROCESSING_ENABLED=true`。
 2. 更新代码后先 `pnpm db:migrate`，再启动或重启 `pnpm dev:worker`；`pnpm dev` 只启动网页。修改 `.env` 后也需重启 Worker。
@@ -45,18 +45,18 @@
 | `src/worker/index.ts` | 已取消音轨下载和音频提取调用，使用 URL 视频摘要 provider |
 | `src/server/env.ts` | 不再读取 `YT_DLP_PATH`、`FFMPEG_PATH`、`YOUTUBE_PROXY_URL` |
 | `.env.example`、Lightsail 模板及 Compose | 已移除工具路径和下载代理配置 |
-| Lightsail Dockerfile | 已删除 Python、yt-dlp、EJS、FFmpeg 安装；构建并部署新镜像后生效 |
+| Lightsail Dockerfile / 当前生产镜像 | 已删除 Python、yt-dlp、EJS、FFmpeg 安装；`sharing:6581554` 已部署，旧工具安装目录及 FFmpeg 二进制缺席检查通过 |
 | 本机忽略提交的 `.env` | 仍保留 `YT_DLP_PATH`、`FFMPEG_PATH`；新 Worker 不读取，可删除这两行并保留其余配置 |
 | 本机 `.local/audio-tools` | 仍保留旧工具安装，新 Worker 不使用 |
 | `youtube-audio.ts`、`gemini-files.ts`、`createGeminiAudio` 及相关测试 | 仍保留旧实现和测试，当前 Worker 不调用旧音频流程 |
 | `scripts/validate-youtube-audio.mjs` | 仍保留手动音频诊断脚本，不由当前 Worker 调用；主动运行会发送真实模型请求 |
-| 最近确认的生产 `sharing:cdca1f0` | 仍是旧音频镜像，尚未由 URL Worker 替换 |
+| 生产配置及旧镜像 | 当前运行 `sharing:6581554`；服务器配置无旧工具/代理变量，保留 API keys、档位及处理开关；旧音频镜像保留用于回滚 |
 
 当前改动移除了新 Worker 的下载依赖，并非彻底删除所有历史文件。本地工具/模块的进一步清理可单独进行；历史音频摘要、失败码和用量记录继续保留。
 
 ## 迁移与部署
 
-新增 `0004_slow_menace.sql` 只增加两个 nullable 用量字段，不重写摘要、历史调用或额度；本地已应用，生产待执行。代码已推送 GitHub；下一步按 [Lightsail 更新流程](DEPLOY_LIGHTSAIL.md#7-后续更新和回滚) 拉取最新 `main`、构建、备份、停止旧 Web/Worker、执行迁移、启动同版本服务。部署时取实际拉取的 Git SHA 作为镜像标签；该提交必须包含 `f9cd079` 的 URL Worker 改动。不能仅重启旧镜像。
+新增 `0004_slow_menace.sql` 只增加两个 nullable 用量字段，不重写摘要、历史调用或额度；本地和生产均已应用。此次生产按 [Lightsail 更新流程](DEPLOY_LIGHTSAIL.md#7-后续更新和回滚) 从 GitHub 拉取 `6581554`、构建、备份、停止旧 Web/Worker、迁移并启动同版本服务。迁移前后正式业务表行数及指纹一致，备份已校验并离机保存。镜像标签记录实际构建 HEAD，后续纯文档提交不自动改变运行镜像。
 
 Dockerfile 已移除 Python/yt-dlp/EJS/FFmpeg 安装；Compose 移除下载代理变量，保留既有 API keys、模型并发和任务期限。服务器配置文件可删去历史下载工具变量，其余凭据保留。新增 nullable 字段与上一个音频版本兼容；回退代码时保留迁移，不改历史记录。
 
@@ -66,4 +66,5 @@ Dockerfile 已移除 Python/yt-dlp/EJS/FFmpeg 安装；Compose 移除下载代�
 - PostgreSQL 集成：一次调用计量、单单位额度及恢复、失败已知用量、结果未知、租约保护、元数据维护、旧摘要来源标注、旧库升级和空库迁移。
 - 浏览器：桌面/手机排队提示、新旧摘要来源和作者 Description、播放回退。
 - 真实隔离 Worker：`node --env-file=.env --import tsx scripts/validate-youtube-worker.ts VIDEO_ID`，在 `TEST_DATABASE_URL` 派生的一次性库执行元数据获取、真实模型调用与落库断言；报告在 `.local/validation/youtube-worker`，结束删除测试库，不修改已有分享。
+- 服务器真实队列：`sharing:6581554` 内的编译 Worker 在一次性库中领取并完成两条真实 pg-boss 任务；报告取回 `.local/deployments/6581554-20260929/queue-result.json`，测试库已删除。
 - 独立 API CLI：`node --env-file-if-exists=.env scripts/test-gemini-youtube.mjs URL --timeout 600 --fps 0.1`；默认非流式，`--stream` 仅用于对照测试，不用于 Worker。
