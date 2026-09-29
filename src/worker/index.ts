@@ -8,9 +8,8 @@ import { maintainContent } from "../server/content/maintenance.ts";
 import { unconfiguredSummary } from "../server/content/types.ts";
 import {
   createGeminiSummary,
-  createGeminiAudio,
+  createGeminiVideoSummary,
 } from "../server/content/gemini.ts";
-import { downloadYoutubeAudio } from "../server/content/youtube-audio.ts";
 import { pool } from "../server/db/index.ts";
 const acquireSummarySlot = createSummaryGate(workerConfig.SUMMARY_CONCURRENCY);
 const enabled = workerConfig.CONTENT_PROCESSING_ENABLED;
@@ -25,9 +24,9 @@ const summary =
         workerConfig.GEMINI_BILLING_TIER,
       )
     : unconfiguredSummary;
-const audio =
+const videoSummary =
   workerConfig.GEMINI_API_KEY && workerConfig.GEMINI_BILLING_TIER
-    ? createGeminiAudio(
+    ? createGeminiVideoSummary(
         workerConfig.GEMINI_API_KEY,
         workerConfig.GEMINI_BILLING_TIER,
       )
@@ -57,13 +56,7 @@ if (enabled) {
           job.id,
           {
             summary,
-            audio,
-            downloadAudio: (id, signal) =>
-              downloadYoutubeAudio(id, signal, {
-                ytDlpPath: workerConfig.YT_DLP_PATH,
-                ffmpegPath: workerConfig.FFMPEG_PATH,
-                proxyUrl: workerConfig.YOUTUBE_PROXY_URL,
-              }),
+            videoSummary,
             acquireSummarySlot,
             youtubeKey: workerConfig.YOUTUBE_API_KEY,
           },

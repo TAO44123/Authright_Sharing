@@ -17,6 +17,7 @@ import { AppError } from "./errors.ts";
 import { CONTENT_QUEUE, getBoss } from "./queue.ts";
 import { normalizeUrl } from "./url.ts";
 import { displayName } from "./display-name.ts";
+import { VIDEO_PROMPT_VERSION } from "./content/summary-contract.ts";
 
 const projection = {
   id: shares.id,
@@ -32,6 +33,7 @@ const projection = {
   normalized_url: contents.normalizedUrl,
   summaryOverview: contents.summaryOverview,
   summaryKeyPoints: contents.summaryKeyPoints,
+  promptVersion: contents.promptVersion,
   videoDescription: contents.videoDescription,
   video_id: contents.videoId,
   author: contents.author,
@@ -56,6 +58,7 @@ function dto(
     normalized_url: string;
     summaryOverview: string | null;
     summaryKeyPoints: string[] | null;
+    promptVersion: string | null;
     videoDescription: string | null;
     video_id: string | null;
     author: string | null;
@@ -114,7 +117,9 @@ function dto(
     withdrawn: Boolean(r.withdrawnAt),
     content_scope_note:
       r.type === "youtube" && summary
-        ? "AI summary of the video audio only; visual content is not analyzed. Full audio and transcripts are not stored."
+        ? r.promptVersion === VIDEO_PROMPT_VERSION
+          ? "AI summary based on the video's spoken content and sampled visuals. Full video and transcripts are not stored."
+          : "AI summary of the video audio only; visual content is not analyzed. Full audio and transcripts are not stored."
         : "Saved summary or author description only. Full articles and video transcripts are not available; visit the source for further details.",
     full_content_available: false,
   });
@@ -439,7 +444,7 @@ export async function retryShare(actor: Actor, id: string, input: unknown) {
     )
       throw new AppError(
         "CONFLICT",
-        "Only failed content or videos without an audio summary can be processed.",
+        "Only failed content or videos without a summary can be processed.",
         409,
       );
     const previous = await tx

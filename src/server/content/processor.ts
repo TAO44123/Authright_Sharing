@@ -21,17 +21,14 @@ import { extractArticle } from "./extract.ts";
 import { youtubePreview, type parseVideo } from "./youtube.ts";
 import {
   ProcessingError,
-  type AudioProvider,
+  type VideoSummaryProvider,
   type ModelUsage,
   type SummaryPricing,
   type SummaryProvider,
 } from "./types.ts";
 
-import { downloadYoutubeAudio } from "./youtube-audio.ts";
-
 export type ProcessorDependencies = {
-  audio?: AudioProvider;
-  downloadAudio?: typeof downloadYoutubeAudio;
+  videoSummary?: VideoSummaryProvider;
   summary: SummaryProvider;
   acquireSummarySlot?: (signal: AbortSignal) => Promise<() => void>;
   fetchArticle?: typeof fetchHtml;
@@ -187,6 +184,62 @@ export async function processContentJob(
       return true;
     });
   }
+  async function saveUsage(
+    provider: { model: string; pricing?: SummaryPricing },
+    index: number,
+    result: ModelUsage,
+    status: "succeeded" | "failed",
+  ) {
+    const cachedTokens = result.usageDetails?.cachedContentTokenCount ?? 0;
+    if (
+      !Number.isSafeInteger(cachedTokens) ||
+      cachedTokens < 0 ||
+      (result.inputTokens !== null && cachedTokens > result.inputTokens)
+    )
+      throw new ProcessingError("INVALID_USAGE");
+    const usageKnown =
+      result.inputTokens !== null && result.outputTokens !== null;
+    if (
+      usageKnown &&
+      (!Number.isSafeInteger(result.inputTokens) ||
+        !Number.isSafeInteger(result.outputTokens) ||
+        result.inputTokens! < 0 ||
+        result.outputTokens! < 0)
+    )
+      throw new ProcessingError("INVALID_USAGE");
+    await database
+      .update(usageEvents)
+      .set({
+        status,
+        usageKnown,
+        inputTokens: usageKnown ? result.inputTokens : null,
+        outputTokens: usageKnown ? result.outputTokens : null,
+        providerRequestId: result.providerRequestId,
+        usageDetails: result.usageDetails ?? null,
+        model: result.model,
+        estimatedAmount:
+          usageKnown &&
+          provider.pricing &&
+          (!cachedTokens ||
+            provider.pricing.cachedInputPerMillion !== undefined)
+            ? (
+                ((result.inputTokens! - cachedTokens) *
+                  Number(provider.pricing.inputPerMillion) +
+                  cachedTokens *
+                    Number(provider.pricing.cachedInputPerMillion ?? 0) +
+                  result.outputTokens! *
+                    Number(provider.pricing.outputPerMillion)) /
+                1_000_000
+              ).toFixed(10)
+            : null,
+      })
+      .where(
+        and(
+          eq(usageEvents.attemptId, attempt.id),
+          eq(usageEvents.invocationIndex, index),
+        ),
+      );
+  }
   async function invoke<T extends ModelUsage>(
     provider: { model: string; pricing?: SummaryPricing },
     service: string,
@@ -230,52 +283,21 @@ export async function processContentJob(
           else signal.addEventListener("abort", onAbort, { once: true });
         }),
       ]);
+    } catch (error) {
+      if (error instanceof ProcessingError && error.usage)
+        await saveUsage(provider, index, error.usage, "failed");
+      throw error;
     } finally {
       if (onAbort) signal.removeEventListener("abort", onAbort);
     }
-    const usageKnown =
-      result.inputTokens !== null && result.outputTokens !== null;
-    if (
-      usageKnown &&
-      (!Number.isSafeInteger(result.inputTokens) ||
-        !Number.isSafeInteger(result.outputTokens) ||
-        result.inputTokens! < 0 ||
-        result.outputTokens! < 0)
-    )
-      throw new ProcessingError("INVALID_USAGE");
-    await database
-      .update(usageEvents)
-      .set({
-        status: "succeeded",
-        usageKnown,
-        inputTokens: usageKnown ? result.inputTokens : null,
-        outputTokens: usageKnown ? result.outputTokens : null,
-        providerRequestId: result.providerRequestId,
-        model: result.model,
-        estimatedAmount:
-          usageKnown && provider.pricing
-            ? (
-                (result.inputTokens! *
-                  Number(provider.pricing.inputPerMillion) +
-                  result.outputTokens! *
-                    Number(provider.pricing.outputPerMillion)) /
-                1_000_000
-              ).toFixed(10)
-            : null,
-      })
-      .where(
-        and(
-          eq(usageEvents.attemptId, attempt.id),
-          eq(usageEvents.invocationIndex, index),
-        ),
-      );
+    await saveUsage(provider, index, result, "succeeded");
     return result;
   }
   try {
     let article: { title: string; author: string | null; text: string };
-    let audioBytes: Buffer | undefined;
     if (content.type === "youtube") {
-      if (!content.videoId) throw new ProcessingError("INVALID_VIDEO_ID");
+      if (!content.videoId || !/^[A-Za-z0-9_-]{11}$/.test(content.videoId))
+        throw new ProcessingError("INVALID_VIDEO_ID");
       const preview = await (
         deps.video ??
         ((id, signal) => youtubePreview(id, deps.youtubeKey, signal))
@@ -305,12 +327,8 @@ export async function processContentJob(
         );
         return;
       }
-      if (!deps.audio?.configured || !deps.summary.configured)
+      if (!deps.videoSummary?.configured)
         throw new ProcessingError("SUMMARY_NOT_CONFIGURED");
-      audioBytes = await (deps.downloadAudio ?? downloadYoutubeAudio)(
-        content.videoId,
-        signal,
-      );
       article = { title: preview.title, author: preview.author, text: "" };
     } else {
       if (!deps.summary.configured)
@@ -324,17 +342,10 @@ export async function processContentJob(
     signal.throwIfAborted();
     await database
       .update(attempts)
-      .set({ stage: audioBytes ? "extract" : "summarize" })
+      .set({ stage: "summarize" })
       .where(eq(attempts.id, attempt.id));
     releaseSummary = await deps.acquireSummarySlot?.(signal);
-    if (
-      !(await reserveQuota(
-        attempt.id,
-        database,
-        new Date(),
-        audioBytes ? 2 : 1,
-      ))
-    ) {
+    if (!(await reserveQuota(attempt.id, database, new Date(), 1))) {
       await finish(
         {
           ...previewUpdate,
@@ -349,30 +360,24 @@ export async function processContentJob(
       );
       return;
     }
-    if (audioBytes) {
-      const bytes = audioBytes;
-      const extracted = await invoke(deps.audio!, "audio_extract", () =>
-        deps.audio!.extract({ audio: bytes, signal }),
-      );
-      article.text = JSON.stringify(extracted.notes);
-      audioBytes = undefined;
-      await database
-        .update(attempts)
-        .set({ stage: "summarize" })
-        .where(eq(attempts.id, attempt.id));
-    }
-    const result = await invoke(deps.summary, "summary", () =>
-      deps.summary.summarize({
-        title:
-          content.type === "youtube"
-            ? "Audio-derived video notes"
-            : article.title,
-        text: article.text,
-        sourceType: content.type,
-        attemptId: attempt.id,
-        signal,
-      }),
-    );
+    const result =
+      content.type === "youtube"
+        ? await invoke(deps.videoSummary!, "video_summary", () =>
+            deps.videoSummary!.summarize({
+              videoId: content.videoId!,
+              durationSeconds: previewUpdate.durationSeconds ?? null,
+              signal,
+            }),
+          )
+        : await invoke(deps.summary, "summary", () =>
+            deps.summary.summarize({
+              title: article.title,
+              text: article.text,
+              sourceType: "article",
+              attemptId: attempt.id,
+              signal,
+            }),
+          );
     const parsed = articleSummary.safeParse(result.summary);
     if (!parsed.success) throw new ProcessingError("INVALID_SUMMARY");
     signal.throwIfAborted();

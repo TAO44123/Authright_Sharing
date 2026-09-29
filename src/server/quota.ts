@@ -66,12 +66,13 @@ export async function recordInvocation(
       currency: pricing?.currency,
       inputPricePerMillion: pricing?.inputPerMillion,
       outputPricePerMillion: pricing?.outputPerMillion,
+      cachedInputPricePerMillion: pricing?.cachedInputPerMillion,
       pricedAt: pricing ? new Date() : undefined,
     })
     .onConflictDoNothing();
 }
 
-// Reserved capacity covers both video calls; release an unstarted second call.
+// Settle against actual invocations; historical two-call reservations stay valid.
 export async function settleQuota(
   attemptId: string,
   database: Pick<typeof db, "update"> = db,

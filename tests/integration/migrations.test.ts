@@ -19,14 +19,14 @@ import { bootstrapAdmin } from "../../src/server/bootstrap.ts";
 
 // Never reset the application or shared test DB. Run unmodified migrations in
 // disposable databases created by this invocation, then remove only those names.
-async function migrateS1(pool: pg.Pool) {
+async function migrateS1(pool: pg.Pool, entries = 2) {
   const folder = await mkdtemp(path.join(tmpdir(), "sharing-s1-migrations-"));
   try {
     await mkdir(path.join(folder, "meta"));
     const journal = JSON.parse(
       await readFile("drizzle/meta/_journal.json", "utf8"),
     );
-    journal.entries = journal.entries.slice(0, 2);
+    journal.entries = journal.entries.slice(0, entries);
     await writeFile(
       path.join(folder, "meta/_journal.json"),
       JSON.stringify(journal),
@@ -43,6 +43,63 @@ async function migrateS1(pool: pg.Pool) {
 }
 
 describe("A1 migration and database invariants", () => {
+  it("adds URL video usage fields without rewriting legacy audio summaries or two-call accounting", async () => {
+    await isolated(async (pool) => {
+      await migrateS1(pool, 4);
+      const contentId = randomUUID(),
+        taskId = randomUUID(),
+        attemptId = randomUUID();
+      await pool.query(
+        "insert into contents (id, dedupe_key, normalized_url, original_url, type, status, summary_overview, summary_key_points, prompt_version) values ($1, 'youtube:dQw4w9WgXcQ', 'https://youtu.be/dQw4w9WgXcQ', 'https://youtu.be/dQw4w9WgXcQ', 'youtube', 'ready', 'Legacy audio summary', '[\"One\",\"Two\",\"Three\"]', 'youtube-audio-en-v1')",
+        [contentId],
+      );
+      await pool.query(
+        "insert into content_tasks (id, content_id, job_id, state) values ($1, $2, $3, 'completed')",
+        [taskId, contentId, randomUUID()],
+      );
+      await pool.query(
+        "insert into processing_attempts (id, task_id, generation, attempt_no, stage) values ($1, $2, 1, 1, 'summarize')",
+        [attemptId, taskId],
+      );
+      await pool.query(
+        "insert into quota_reservations (attempt_id, billing_month, units, status) values ($1, '2026-09-01', 2, 'consumed')",
+        [attemptId],
+      );
+      await pool.query(
+        "insert into usage_events (attempt_id, service, invocation_index, status, usage_known, input_tokens, output_tokens) values ($1, 'audio_extract', 1, 'succeeded', true, 100, 20), ($1, 'summary', 2, 'succeeded', true, 30, 10)",
+        [attemptId],
+      );
+      const before = {
+        contents: (await pool.query("select * from contents")).rows,
+        quota: (await pool.query("select * from quota_reservations")).rows,
+        usage: (
+          await pool.query(
+            "select * from usage_events order by invocation_index",
+          )
+        ).rows,
+      };
+      await migrate(drizzle(pool), { migrationsFolder: "drizzle" });
+      expect((await pool.query("select * from contents")).rows).toEqual(
+        before.contents,
+      );
+      expect(
+        (await pool.query("select * from quota_reservations")).rows,
+      ).toEqual(before.quota);
+      expect(
+        (
+          await pool.query(
+            "select * from usage_events order by invocation_index",
+          )
+        ).rows,
+      ).toEqual(
+        before.usage.map((row) => ({
+          ...row,
+          usage_details: null,
+          cached_input_price_per_million: null,
+        })),
+      );
+    });
+  });
   it("creates a fresh database, repeats migrations and bootstrap without promoting ordinary members", async () => {
     await isolated(async (pool) => {
       const db = drizzle(pool);

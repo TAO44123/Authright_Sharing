@@ -1,5 +1,5 @@
 export const SUMMARY_PROMPT_VERSION = "article-en-v1";
-export const VIDEO_PROMPT_VERSION = "youtube-audio-en-v1";
+export const VIDEO_PROMPT_VERSION = "youtube-url-en-v1";
 export function summaryMessages(
   title: string,
   text: string,

@@ -299,6 +299,15 @@ export const usageEvents = pgTable(
     }).notNull(),
     inputTokens: integer("input_tokens"),
     outputTokens: integer("output_tokens"),
+    usageDetails: jsonb("usage_details").$type<{
+      promptTokenCount?: number;
+      candidatesTokenCount?: number;
+      thoughtsTokenCount?: number;
+      totalTokenCount?: number;
+      cachedContentTokenCount?: number;
+      promptTokensDetails?: { modality: string; tokenCount: number }[];
+      cacheTokensDetails?: { modality: string; tokenCount: number }[];
+    }>(),
     usageKnown: boolean("usage_known").notNull().default(false),
     estimatedAmount: numeric("estimated_amount", { precision: 20, scale: 10 }),
     currency: text("currency"),
@@ -308,6 +317,10 @@ export const usageEvents = pgTable(
       scale: 10,
     }),
     outputPricePerMillion: numeric("output_price_per_million", {
+      precision: 20,
+      scale: 10,
+    }),
+    cachedInputPricePerMillion: numeric("cached_input_price_per_million", {
       precision: 20,
       scale: 10,
     }),

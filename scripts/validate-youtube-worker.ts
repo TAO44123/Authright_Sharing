@@ -8,10 +8,9 @@ import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { PgBoss } from "pg-boss";
 import { isolated } from "../tests/helpers/database.ts";
 import {
-  createGeminiAudio,
+  createGeminiVideoSummary,
   createGeminiSummary,
 } from "../src/server/content/gemini.ts";
-import { downloadYoutubeAudio } from "../src/server/content/youtube-audio.ts";
 import {
   contents,
   tasks,
@@ -39,7 +38,7 @@ process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
 const { processContentJob } =
   await import("../src/server/content/processor.ts");
 const { pool } = await import("../src/server/db/index.ts");
-const directory = `test-results/youtube-worker/${videoId}-${Date.now()}`;
+const directory = `.local/validation/youtube-worker/${videoId}-${Date.now()}`;
 await mkdir(directory, { recursive: true });
 try {
   await isolated(async (testPool) => {
@@ -56,9 +55,9 @@ try {
         expireInSeconds: CONTENT_QUEUE_SECONDS,
       });
       await database.insert(user).values({
-        id: "audio-probe",
-        name: "Audio probe",
-        email: "audio-probe@authright.com",
+        id: "video-probe",
+        name: "Video probe",
+        email: "video-probe@authright.com",
         emailVerified: true,
       });
       const url = `https://www.youtube.com/watch?v=${videoId}`;
@@ -74,7 +73,7 @@ try {
         .returning();
       await database.insert(shares).values({
         contentId: content.id,
-        userId: "audio-probe",
+        userId: "video-probe",
         originalUrl: url,
       });
       const jobId = await boss.send("process-content", {
@@ -94,14 +93,12 @@ try {
       await processContentJob(jobId!, {
         database,
         summary: createGeminiSummary(process.env.GEMINI_API_KEY!, "free", send),
-        audio: createGeminiAudio(process.env.GEMINI_API_KEY!, "free", send),
+        videoSummary: createGeminiVideoSummary(
+          process.env.GEMINI_API_KEY!,
+          "free",
+          send,
+        ),
         youtubeKey: process.env.YOUTUBE_API_KEY,
-        downloadAudio: (id, signal) =>
-          downloadYoutubeAudio(id, signal, {
-            ytDlpPath: process.env.YT_DLP_PATH,
-            ffmpegPath: process.env.FFMPEG_PATH,
-            proxyUrl: process.env.YOUTUBE_PROXY_URL,
-          }),
       });
       const [result] = await database.select().from(contents);
       const calls = await database.select().from(usageEvents);
@@ -137,8 +134,12 @@ try {
       );
       if (
         result.status !== "ready" ||
-        calls.length !== 2 ||
-        calls.some((c) => c.status !== "succeeded")
+        calls.length !== 1 ||
+        calls.some(
+          (c) => c.status !== "succeeded" || c.service !== "video_summary",
+        ) ||
+        reservations.length !== 1 ||
+        reservations[0].units !== 1
       )
         process.exitCode = 1;
     } finally {

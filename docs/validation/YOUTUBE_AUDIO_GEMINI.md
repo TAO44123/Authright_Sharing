@@ -1,5 +1,7 @@
 # YouTube 音轨 → Gemini 验证
 
+> 历史音频流程记录：2026-09-29 起新版 Worker 改为 YouTube URL 非流式一次调用；当前行为和验收见 [URL 验证](YOUTUBE_URL_GEMINI.md)。本文件保留当时证据，不代表当前实现。
+
 日期：2026-09-28 至 29。先验证 Claude.ai 短视频，再按用户要求验证 Andrew Ng 的 110 分钟长视频。**本地 Worker 已分别在 23:08 UTC 和 23:23 UTC 完成两条视频的真实音频摘要并落库；Lightsail 已部署代码和迁移，但服务器出口触发 YouTube 人机验证，生产音频验收未通过。**下方保留早期 Gemini 503、工具缺失和大小限制的失败记录，供排查过程参考。
 
 23:23 UTC 的本地检查中 Worker 已运行：Claude.ai 分享为 `ready`，generation=3、attempts=1；Andrew Ng 分享也为 `ready`，generation=5、attempts=1。两者的任务均已 completed，各保存概述及 4 个要点。新版已去掉时间戳并使用视频专用提示词；下文时间戳越界、This article 措辞是旧探测的历史问题。

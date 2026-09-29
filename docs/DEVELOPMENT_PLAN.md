@@ -1,12 +1,12 @@
 # Sharing — 开发计划与 Plugin 私有分发方案
 
-> 2026-09-28 更新：YouTube 处理改为下载临时音轨 → Gemini 信息提取 → 视频摘要；接口新增 `ai_video_summary` / `video_summary`，视频预留两次调用额度。本地数据库迁移已应用，Worker 已启动，Claude.ai 样本音频摘要已成功落库；运行状态、完整行为与部署步骤见 [音轨 Worker](./YOUTUBE_AUDIO_WORKER.md)。
+> 2026-09-29 更新：YouTube Worker 改为直接 URL、Gemini 非流式一次调用，长视频降低画面采样；新迁移记录缓存用量，旧音频摘要和历史计量保留。当前实现及验收边界见 [视频 Worker](./YOUTUBE_AUDIO_WORKER.md)。
 
 版本：v0.6
 
 日期：2026-09-28
 
-状态：A1–A5 及视频音频修订代码已交付；本地短视频/110 分钟长视频摘要成功，Lightsail 代码和迁移已部署；生产音轨下载受 YouTube 人机验证阻挡
+状态：A1–A5 与 URL 非流式视频修订代码已实现；生产旧音频镜像尚未升级，当前验收见 URL 记录
 
 关联：[PRD](./PRD.md) · [技术设计](./TECHNICAL_DESIGN.md) · [开发指南](./DEVELOPMENT.md)
 
@@ -133,14 +133,14 @@ A1 本地验收已完成：19 项单元测试、11 项集成测试、Web/Worker 
 - [x] **A4.1 任务可靠性**：Worker 租约、generation、重试、超时、对账、优雅退出和不确定调用结果处理。
 - [x] **A4.2 真实样本评估**：按用户修订收集并保留 3 篇文章、3 个视频；记录成功与受限来源分类，选择 Gemini 3.5 Flash-Lite 和价格依据。
 - [x] **A4.3 文章处理**：安全抓取、Readability、可靠正文判断、英文结构化摘要、结果复用和临时正文清理。
-- [x] **A4.4 视频处理**：YouTube 元数据、原始 Description、嵌入回退和缓存维护；已新增 yt-dlp/FFmpeg → Gemini 信息提取 → 视频摘要，网页/MCP 和分阶段计量同步完成。真实音频 Worker 成功验收另列下方。
+- [x] **A4.4 视频处理**：YouTube 元数据、原始 Description、嵌入回退和缓存维护；已改为 YouTube URL → Gemini 非流式一次摘要，网页/MCP、单单位额度和缓存计量同步。历史音频验收保留在下方。
 - [x] **A4.5 用量接入**：生产模型请求经过额度预留与计量接口，记录 Token、所选 Free/Paid 档位的价格快照和未知用量；原生 HTTP 每次仅发送一个请求。当前本地 Gemini Free tier 的文本单价为零，历史付费价快照仅作对照。
 
-验收：外部服务失败不影响已保存分享；正文不足不编造；视频正常处理为两次模型调用，元数据刷新为零次；Worker 重启不会永久卡住；正文不进入数据库、队列或日志。
+验收：外部服务失败不影响已保存分享；正文不足不编造；视频正常处理为一次模型调用，元数据刷新为零次；Worker 重启不会永久卡住；正文不进入数据库、队列或日志。
 
 2026-09-27 用户把真实样本量改为文章、视频各 3 条，并要求验收后保留分享。Gemini 与 YouTube 已用真实 API 完成这 6 条验收；一条额外候选 OpenAI 文章返回访问受限，因此换用可抓取的 Hugging Face 文章。调用发送后不自动重复付费，未知结果保守计量。详情、样本链接和实际用量见 [A4 真实服务验收](./validation/A4_REAL_SERVICES.md)。这些公开样本不代表团队所有来源；真实浏览器内的视频播放仍需设备/网络环境验证。
 
-### YouTube 音频摘要修订（2026-09-28）
+### 历史 YouTube 音频摘要修订（2026-09-28，已被 URL 流程替代）
 
 - [x] 无时间戳音频信息提取、视频专用摘要提示词、临时音轨清理。
 - [x] 数据约束、两阶段用量/额度、网页和 MCP 视频摘要契约、Docker 依赖同步。
@@ -150,9 +150,18 @@ A1 本地验收已完成：19 项单元测试、11 项集成测试、Web/Worker 
 - [x] Claude.ai 样本真实 Worker 成功落库：generation=3，attempts=1，2026-09-28 23:08 UTC 完成，保存概述及 4 个要点；不代表所有视频或生产环境均已验收。
 - [x] 长音轨走 Gemini Files API：128 MiB MP3 / 512 MiB 源音轨限制，上传状态轮询与远端文件清理；队列期限同步为 1020 秒。58 项单元测试和 15 项集成测试通过；Andrew Ng 110 分钟样本 generation=5 已在约 78 秒内成功落库。
 - [x] 从 GitHub 拉取并在 Lightsail 部署音频版本 `cdca1f0`，完成迁移、备份及 Web/Worker/数据库健康检查。
-- [ ] 生产音频摘要验收：服务器出口下载两条公开视频均触发 YouTube 人机验证，隔离长视频探测在调用 Gemini 前失败；需解决下载权限后复测。
+- 历史生产音频验收未通过：服务器出口触发人机验证；此方案已被 URL 流程替代，不再要求修复下载出口。
 
-详细证据见 [音轨验证](./validation/YOUTUBE_AUDIO_GEMINI.md)，启动步骤见 [音轨 Worker](./YOUTUBE_AUDIO_WORKER.md)。
+历史证据见 [音轨验证](./validation/YOUTUBE_AUDIO_GEMINI.md)；当前启动步骤见 [视频 Worker](./YOUTUBE_AUDIO_WORKER.md)。
+
+### YouTube URL 非流式修订（2026-09-29）
+
+- [x] 现有 Lightsail 容器验证短视频及 110 分钟长视频非流式 URL 请求成功。
+- [x] 新 Worker 使用一次 `generateContent`；600 秒请求期限，长/未知时长 0.1 fps，严格校验与无隐式重试。
+- [x] 新视频只预留 1 单位，usage_events 保留缓存及模态计数，旧两阶段计量不改写。
+- [x] 新旧摘要按 prompt_version 标注来源，排队与生成分开显示；Docker/Compose 移除音频下载依赖。
+- [x] 单元、PostgreSQL 集成和构建通过；真实新版 Worker 与浏览器结果见 [当前验收](./validation/YOUTUBE_URL_GEMINI.md)。
+- [ ] 发布到 GitHub 后，在服务器拉取、构建、备份、迁移并启动新镜像，再验收正常队列任务。
 
 ### A5 — 网页体验
 

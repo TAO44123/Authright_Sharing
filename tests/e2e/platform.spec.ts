@@ -154,9 +154,7 @@ test("share, failed processing, retry, detail, filters, account and withdrawal",
     }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Retry processing" }).click();
-  await expect(
-    page.getByText("Generating summary", { exact: true }),
-  ).toBeVisible();
+  await expect(page.getByText("Summary queued", { exact: true })).toBeVisible();
   await db
     .update(contents)
     .set({
@@ -359,6 +357,7 @@ test("video description stays distinct and a non-embeddable video keeps its sour
       status: "ready",
       title: "Browser video preview",
       summaryOverview: "This video explains how the audio workflow works.",
+      promptVersion: "youtube-audio-en-v1",
       summaryKeyPoints: [
         "Download audio",
         "Extract spoken information",
@@ -386,6 +385,15 @@ test("video description stays distinct and a non-embeddable video keeps its sour
     page.getByText("This video explains how the audio workflow works."),
   ).toBeVisible();
   await expect(page.getByText("Based on the video’s audio.")).toBeVisible();
+  await db
+    .update(contents)
+    .set({ promptVersion: "youtube-url-en-v1" })
+    .where(eq(contents.id, video.id));
+  await page.reload();
+  await expect(
+    page.getByText("Based on the video’s spoken content and sampled visuals."),
+  ).toBeVisible();
+  await expect(page.getByText("Based on the video’s audio.")).toHaveCount(0);
   await expect(
     page.getByText("The author did not provide a description."),
   ).toBeVisible();

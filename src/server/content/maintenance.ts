@@ -140,14 +140,7 @@ export async function maintainContent(boss: PgBoss, database = db) {
         .where(eq(tasks.state, "deferred_quota"))
         .for("update");
       for (const task of deferred) {
-        const [item] = await tx
-          .select({ type: contents.type })
-          .from(contents)
-          .where(eq(contents.id, task.contentId));
-        if (
-          setting.quotaEnabled &&
-          used + (item.type === "youtube" ? 2 : 1) > setting.monthlyCallLimit!
-        )
+        if (setting.quotaEnabled && used + 1 > setting.monthlyCallLimit!)
           continue;
         await tx
           .update(tasks)

@@ -1,10 +1,10 @@
 # Sharing
 
-Company-only link sharing with Google Workspace sign-in and an authenticated MCP endpoint. This checkout includes A1–A5 local flows. A4 uses Gemini for article summaries and YouTube Data API v3 for video metadata plus yt-dlp/FFmpeg and Gemini for audio summaries; processing is paused by default in `.env.example` until both keys are configured. Saved links have real queued jobs; automated tests use explicit fixtures.
+Company-only link sharing with Google Workspace sign-in and an authenticated MCP endpoint. This checkout includes A1–A5 local flows. A4 uses Gemini for article summaries and YouTube Data API v3 for video metadata plus one non-streaming Gemini request using the public YouTube URL for video summaries; processing is paused by default in `.env.example` until both keys are configured. Saved links have real queued jobs; automated tests use explicit fixtures.
 
 ## Local setup
 
-Requirements: Node 24, pnpm 11.25.0, Docker. Running the audio Worker directly on the host also requires yt-dlp with yt-dlp-ejs and FFmpeg; the production Docker image includes them. Set `YT_DLP_PATH` and `FFMPEG_PATH` to executable paths when they are not on `PATH`.
+Requirements: Node 24, pnpm 11.25.0, Docker. The Worker uses the existing Gemini and YouTube API keys; no audio download tools or proxy are required.
 
 ```sh
 pnpm install --frozen-lockfile
@@ -15,7 +15,7 @@ pnpm admin:bootstrap tao.xu@authright.com
 pnpm dev
 ```
 
-After configuring the processing keys, billing tier and audio tools, run the worker in another terminal. `pnpm dev` starts only the website; setting `CONTENT_PROCESSING_ENABLED=true` does not start a Worker process:
+After configuring the processing keys and billing tier, run the worker in another terminal. `pnpm dev` starts only the website; setting `CONTENT_PROCESSING_ENABLED=true` does not start a Worker process:
 
 ```sh
 pnpm dev:worker
@@ -60,11 +60,11 @@ A2–A5 implementation details, changed-file groups, tests and deferred external
 
 ### Content processing configuration
 
-Last local check (2026-09-28 23:23 UTC): migration `0003_lively_ikaris` is applied, the host audio tools are configured, and the Worker was running. Both the Claude.ai sample and the 110-minute [Andrew Ng video](http://localhost:3000/shares/c2d0d94f-462c-4e96-97a8-a5269eb13163) completed with audio summaries. MP3s over 14 MiB use Gemini Files API (128 MiB MP3 limit, 512 MiB source limit); the queue timeout is 1020 seconds. The UI labels both queued and processing states as generating a summary. See the [Worker status and setup](docs/YOUTUBE_AUDIO_WORKER.md#本地运行状态与启动检查).
+Current implementation (2026-09-29): YouTube videos use one non-streaming Gemini request with a canonical URL, 600-second request timeout and 0.1 fps for videos at least 30 minutes long or with unknown duration. Migration `0004_slow_menace` is applied locally and adds nullable cache usage fields; old audio summaries and two-call records remain intact. The UI now distinguishes queued from generating. See the [Worker setup](docs/YOUTUBE_AUDIO_WORKER.md) and [current validation](docs/validation/YOUTUBE_URL_GEMINI.md).
 
-`CONTENT_PROCESSING_ENABLED=false` is the template default. Set `GEMINI_API_KEY` and `YOUTUBE_API_KEY` in `.env`, then set processing to `true` and start the Worker. It consumes existing queued links as well as new submissions. Startup refuses to consume without both keys. Article summaries use Gemini 3.5 Flash-Lite, a single REST request per invocation, and an English JSON overview with 3–5 points. YouTube videos download a temporary audio-only track, convert it to MP3, extract spoken notes with Gemini, then generate an English overview and 3–5 points. Video summaries are labeled separately from the original author Description; visuals and timestamps are not analyzed. Local audio is deleted after processing; long MP3s are temporarily uploaded to Gemini Files API and deleted when possible, with provider expiry after 48 hours as a fallback. Intermediate notes are not stored. See [audio Worker setup](docs/YOUTUBE_AUDIO_WORKER.md). The historical six-link evaluation covered article summaries and video metadata; it is recorded in [A4 validation](docs/validation/A4_REAL_SERVICES.md). The [audio validation record](docs/validation/YOUTUBE_AUDIO_GEMINI.md) separates earlier Gemini 503 probes from the later successful short and long video Worker runs.
+`CONTENT_PROCESSING_ENABLED=false` is the template default. Configure both API keys and billing tier, then enable processing and start the Worker. Startup consumes existing queued links. Article summaries use one Gemini REST request with an English overview and 3–5 points. YouTube summaries use the actual supplied URL in one non-streaming request, combining speech and sampled visuals; title and Description are not summary inputs. The original Description is returned separately. No media or full transcripts are stored. Completed summaries are reused; metadata refresh does not invoke a model. See the [video Worker](docs/YOUTUBE_AUDIO_WORKER.md). Earlier article/metadata and audio evaluations remain in the validation directory as historical evidence.
 
-The default technical limits are two Worker jobs and one summary invocation at a time. Set `GEMINI_BILLING_TIER=free` when the Gemini API project is on its Free tier; successful known text/audio usage then has zero estimated Gemini cost. Product monthly quotas are off by default. Articles reserve one model call; video audio processing reserves two and releases any unstarted call after failure. Metadata-only refreshes do not invoke Gemini. A6 provider RPM/TPM/RPD scheduling is deferred unless trials show frequent rate limits. The current Worker records a Gemini 429 as a processing failure, keeps the share, and allows a manual retry after capacity returns. No separate usage or audit page is planned. Queries never fetch an article or invoke a model.
+The default technical limits are two Worker jobs and one summary invocation at a time. Set `GEMINI_BILLING_TIER=free` when the Gemini API project is on its Free tier; successful known text/video usage then has zero estimated Gemini cost. Product monthly quotas are off by default. Articles and videos each reserve one model call. Historical two-call audio records remain unchanged. Metadata-only refreshes do not invoke Gemini. A6 provider RPM/TPM/RPD scheduling is deferred unless trials show frequent rate limits. The current Worker records a Gemini 429 as a processing failure, keeps the share, and allows a manual retry after capacity returns. No separate usage or audit page is planned. Queries never fetch an article or invoke a model.
 
 ## Current surface
 
@@ -92,6 +92,6 @@ For a deliberate first-connection test, see the scoped reset procedure in [DEVEL
 
 ## Next stages
 
-See the [Lightsail deployment runbook](docs/DEPLOY_LIGHTSAIL.md) for production Docker Compose, Caddy HTTPS, migrations, backups and updates. Audio-summary image `sharing:cdca1f0` and migration `0003` were deployed on 2026-09-29; Web, Worker and PostgreSQL are running and the public health endpoint passes. Production audio acceptance is blocked because YouTube requires a bot-verification sign-in from the Lightsail outbound IP; an isolated long-video probe stopped before any Gemini call. Local audio summaries remain validated, but server-side YouTube downloading needs a suitable outbound access method before production audio summaries can succeed.
+See the [Lightsail deployment runbook](docs/DEPLOY_LIGHTSAIL.md) for Docker Compose, Caddy HTTPS, migrations, backups and updates. Production still runs the earlier audio image `sharing:cdca1f0`; its downloads encounter YouTube bot verification. Short and 110-minute direct URL requests have now succeeded non-streaming from the existing container, but the new Worker image has not yet been deployed. Publish code to GitHub, pull on the server, build, back up, stop old services, migrate and start the new image before declaring production acceptance.
 
-See [development plan](docs/DEVELOPMENT_PLAN.md). The five MCP tools and local Codex Plugin packaging are in place. A6 quota enhancements are deferred. Production audio acceptance and private plugin distribution remain next steps. Distribution remains **deployed services + a private plugin repository**; no public marketplace release is assumed.
+See [development plan](docs/DEVELOPMENT_PLAN.md). The five MCP tools and local Codex Plugin packaging are in place. A6 quota enhancements are deferred. Production rollout of the URL video Worker and private plugin distribution remain next steps. Distribution remains **deployed services + a private plugin repository**; no public marketplace release is assumed.

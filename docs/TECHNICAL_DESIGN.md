@@ -1,18 +1,18 @@
 # Sharing — 第一版技术设计
 
-> 2026-09-28 更新：YouTube 处理改为下载临时音轨 → Gemini 信息提取 → 视频摘要；接口新增 `ai_video_summary` / `video_summary`，视频预留两次调用额度。本地数据库迁移已应用，Worker 已启动，Claude.ai 样本音频摘要已成功落库；运行状态、完整行为与部署步骤见 [音轨 Worker](./YOUTUBE_AUDIO_WORKER.md)。
+> 2026-09-29 更新：YouTube Worker 改为直接 URL、Gemini 非流式一次调用，长视频降低画面采样；新迁移记录缓存用量，旧音频摘要和历史计量保留。当前实现及验收边界见 [视频 Worker](./YOUTUBE_AUDIO_WORKER.md)。
 
 版本：v0.5
 
 日期：2026-09-28
 
-状态：文章和视频音频处理设计已同步实现；本地音频迁移完成，Claude.ai 样本真实 Worker 成功落库已验收
+状态：文章和 YouTube URL 非流式视频摘要设计已实现；验收及尚未部署的边界见视频 Worker 文档
 
 需求依据：[产品需求文档](./PRD.md)  
 实施顺序：[开发计划与私有分发](./DEVELOPMENT_PLAN.md)  
 工程约定：[开发指南](./DEVELOPMENT.md)
 
-S1 实现注记：依赖已锁定，采用 Better Auth/MCP 1.7.6、官方 MCP SDK 2.1.0；Google 登录与 Codex DCR OAuth 已实测。连接通过服务端扩展声明 `sharing_grant` 绑定独立 OAuth 授权，所有 MCP 请求实时检查此记录。撤销后可在同一网页登录会话中再次确认授权，无需退出登录。旧访问和刷新凭据保持失效；MCP 返回标准 401 认证挑战，刷新失败返回 invalid_grant。用户已确认 Codex 显示重连提示，点击后打开 Sharing 网页；其他客户端仍待分别验证。首次连接重置后独立 CLI 查询尚为 notLoggedIn，最新证据边界见 [兼容性记录](./validation/COMPATIBILITY.md)。业务事件使用毫秒精度 timestamptz，认证表保留官方生成结构。S1 的任务表为 content_tasks，只有 process_content 排队入口；A1 已补齐处理尝试、计量、额度预留、设置和审计存储，保留 content_tasks/idempotency_keys 等 S1 表名；A4 已接入 Gemini 与 YouTube 实际调用；[A4 真实服务验收](./validation/A4_REAL_SERVICES.md)保留早期元数据证据，最新音频流程与本地迁移结果见 [音轨验证](./validation/YOUTUBE_AUDIO_GEMINI.md)。
+S1 实现注记：依赖已锁定，采用 Better Auth/MCP 1.7.6、官方 MCP SDK 2.1.0；Google 登录与 Codex DCR OAuth 已实测。连接通过服务端扩展声明 `sharing_grant` 绑定独立 OAuth 授权，所有 MCP 请求实时检查此记录。撤销后可在同一网页登录会话中再次确认授权，无需退出登录。旧访问和刷新凭据保持失效；MCP 返回标准 401 认证挑战，刷新失败返回 invalid_grant。用户已确认 Codex 显示重连提示，点击后打开 Sharing 网页；其他客户端仍待分别验证。首次连接重置后独立 CLI 查询尚为 notLoggedIn，最新证据边界见 [兼容性记录](./validation/COMPATIBILITY.md)。业务事件使用毫秒精度 timestamptz，认证表保留官方生成结构。S1 的任务表为 content_tasks，只有 process_content 排队入口；A1 已补齐处理尝试、计量、额度预留、设置和审计存储，保留 content_tasks/idempotency_keys 等 S1 表名；A4 已接入 Gemini 与 YouTube 实际调用；[A4 真实服务验收](./validation/A4_REAL_SERVICES.md)保留早期元数据证据，旧音频验收见 [历史记录](./validation/YOUTUBE_AUDIO_GEMINI.md)，当前 URL 流程见 [视频 Worker](./YOUTUBE_AUDIO_WORKER.md)。
 
 本文是完整产品目标设计。当前 S1 实际字段、路由和 scope 与目标的差异集中记录于 [可执行契约](./validation/CONTRACTS.md#当前接口与完整设计的差异)，不要把下面尚未实现的目标接口当成已上线 API。
 
@@ -37,10 +37,10 @@ S1 实现注记：依赖已锁定，采用 Better Auth/MCP 1.7.6、官方 MCP SD
 | MCP | 官方 TypeScript SDK 2.1.0，远程 HTTP | SDK legacy 与 2026-07-28 pinned 路径通过；不代替三个产品客户端验收 |
 | 异步任务 | pg-boss + 独立 Worker | 队列使用同一 PostgreSQL；应用保留可查询的处理状态 |
 | 文章提取 | 安全 HTTP 抓取 + Readability + 不执行脚本的 DOM 解析 | 首版不默认运行浏览器渲染；依据真实样本决定是否增加抓取服务 |
-| YouTube | YouTube Data API + yt-dlp / FFmpeg + Gemini + 嵌入播放器 | 作者描述原样保存，临时音轨经两次模型调用生成独立摘要 |
+| YouTube | YouTube Data API + Gemini YouTube URL + 嵌入播放器 | 作者描述原样保存，URL 经一次非流式模型调用生成独立摘要 |
 | 模型 | 单供应商、单模型、薄适配器 | 供应商和型号待真实文章评测与凭据配置 |
 | 测试 | Vitest、真实 PostgreSQL 集成测试、Playwright | 验证权限、事务、队列恢复和关键用户流程 |
-| 部署 | AWS Lightsail + Docker Compose | Caddy、Web、Worker、PostgreSQL；域名 sharing.authright.com，音频版本升级步骤见部署指南 |
+| 部署 | AWS Lightsail + Docker Compose | Caddy、Web、Worker、PostgreSQL；域名 sharing.authright.com，视频版本升级步骤见部署指南 |
 
 Next.js 支持 Node.js 和 Docker 部署；pg-boss 使用 PostgreSQL 并提供事务入队、并发和重试能力。两者适合此处的独立 Worker 架构。[Next.js 部署](https://nextjs.org/docs/pages/getting-started/deploying)、[pg-boss](https://github.com/timgit/pg-boss)
 
@@ -59,13 +59,13 @@ flowchart TD
     Core --> Queue[pg-boss 队列]
     Queue --> DB
     Queue --> Worker[Node.js Worker]
-    Worker --> Sources[文章网站 / YouTube Data API / YouTube 音轨]
-    Worker --> LLM[Gemini 文章摘要 / 音频信息提取与摘要]
+    Worker --> Sources[文章网站 / YouTube Data API]
+    Worker --> LLM[Gemini 文章摘要 / YouTube URL 视频摘要]
     Worker --> DB
 ```
 
 - **Web 进程**：页面、认证回调、OAuth 端点、REST、MCP 和健康检查。
-- **Worker 进程**：文章处理、视频音轨摘要与预览、重试、过期任务恢复、视频缓存维护。
+- **Worker 进程**：文章处理、视频摘要与预览、重试、过期任务恢复、视频缓存维护。
 - **共享业务层**：用户身份、成员检查、链接规则、分享与查询、撤回、用量和额度。
 - **数据库**：业务数据、Better Auth 数据、pg-boss 队列数据；一般业务不直接修改认证库或队列内部表。OAuth 连接撤权在认证边界模块中清理对应刷新链和 consent，由集成测试约束；升级认证库时复核这些耦合点。
 
@@ -134,7 +134,7 @@ Google 是上游登录服务；Sharing 是 Agent 的授权服务和受保护资�
 | `idempotency_requests` | `user_id`、`operation`、`key`、请求摘要、结果记录 ID；前三者联合唯一 |
 | `processing_tasks` | `id`、`content_id`、`kind=article_summary/youtube_preview/youtube_refresh`、`generation`、状态、队列 job ID、尝试次数、错误码、租约/开始/结束时间、重试冷却截止时间 |
 | `processing_attempts` | `id`、`task_id`、`attempt_no`、阶段、请求标识、开始/结束时间、结果；一次任务尝试的阶段与结果，不存正文或音频笔记；各次模型调用由 usage_events 分别追踪 |
-| `usage_events` | `id`、attempt ID、服务/模型、供应商请求 ID、输入/输出 Token、调用状态、估算金额、币种、价格版本、计价时间、`usage_known` |
+| `usage_events` | `id`、attempt ID、服务/模型、供应商请求 ID、输入/输出 Token、调用状态、估算金额、币种、价格版本、计价时间、`usage_known`、nullable `usage_details`（缓存及模态 token）、nullable 缓存输入单价 |
 | `quota_reservations` | `id`、attempt ID（唯一）、UTC 计费月份、模型调用单位、状态；用于并发安全的调用次数限制 |
 | `settings` | 单行配置：额度开关、月调用上限、默认时间窗口、分页大小；带版本号防止管理员并发覆盖 |
 | `agent_grants` | `id`、`user_id`、OAuth client 标识、库中授权关联标识、scope、创建时间、撤销时间；不复制明文 Token |
@@ -192,9 +192,9 @@ stateDiagram-v2
 
 - pg-boss 负责交付与重试，应用任务负责产品状态；不再实现第二套竞争消费队列。
 - 每次领取任务生成 attempt ID 与租约；更新结果时校验任务 generation/租约，拒绝过期 Worker 覆盖新结果。
-- 初始单 Worker，总内容处理并发 2，其中模型调用并发 1；可配置。单次任务总期限 900 秒、租约 960 秒、队列期限 1020 秒；下载和转码合计最多 300 秒，文件上传/就绪等待 180 秒，音频提取请求 180 秒、文本摘要请求 90 秒。音频超过 14 MiB 时使用 Files API，完整 MP3 上限 128 MiB，远端文件在处理结束后尝试删除。
-- 模型调用前标记为可重试的抓取错误交给 pg-boss，最多 3 次尝试（含首次）。任何模型请求发出后均不自动重跑该任务，包括 Gemini 429/503 或结果未知；保留错误和用量供手动重试。音轨下载器不做内部重试。
-- 手动重试重建 generation，允许失败内容或尚无音频摘要的历史 ready 视频，受活跃任务检查和 60 秒冷却限制；并发重试合并到一个任务。已有成功摘要不提供重新生成按钮。
+- 初始单 Worker，总内容处理并发 2，其中模型调用并发 1；可配置。视频非流式请求期限 600 秒，文章请求 90 秒；单次任务总期限 900 秒、租约 960 秒、队列期限 1020 秒。长视频或时长未知使用 0.1 fps，不下载/上传音轨。
+- 模型调用前标记为可重试的抓取错误交给 pg-boss，最多 3 次尝试（含首次）。模型请求发出后均不自动重跑，包括 Gemini 429/503、视频不可访问或结果未知；保留错误和用量供手动重试。
+- 手动重试重建 generation，允许失败内容或尚无视频摘要的历史 ready 视频，受活跃任务检查和 60 秒冷却限制；并发重试合并到一个任务。已有成功摘要不提供重新生成按钮。
 - Worker 周期性对账过期租约、异常任务与队列终态，保证状态不会永久停在处理中；停止时停止领取并给在途任务有限完成时间。
 - 内容已无有效分享且外部调用尚未开始时，可取消任务；已经开始的外部调用可能产生费用，但不会恢复撤回的分享。
 
@@ -219,7 +219,7 @@ Readability 是正文提取器，不保证所有网页可提取；提取服务�
 
 ### 6.2 YouTube
 
-处理顺序：YouTube 元数据 → 下载纯音轨 → FFmpeg 转 MP3 → 原子预留两次模型调用 → Gemini 提取无时间戳英文笔记 → 视频专用提示词生成摘要 → 校验并保存最终摘要。只分析音频，不读取字幕或推断画面；不因音频与视频时长差异失败。本地临时音频在 finally 中清理；长音轨通过 Files API 上传后引用，完成、失败或取消后尝试删除远端文件，失败时记录脱敏事件并由供应商过期清理。笔记不进入持久存储。文件大小、进程权限和部署依赖见 [音轨 Worker](./YOUTUBE_AUDIO_WORKER.md)。
+处理顺序：YouTube 元数据 → 原子预留一次模型调用 → 规范 YouTube URL 直接传给 Gemini `generateContent` → 校验完整 STOP、可访问标识和摘要 schema → 保存最终摘要。模型结合语音及采样画面，长视频降低 fps；不传标题/描述冒充视频依据，不比对音视频时长，不要求时间戳。新摘要使用 `youtube-url-en-v1`，历史音频摘要保留旧版本和来源说明。参数、限制与部署见 [视频 Worker](./YOUTUBE_AUDIO_WORKER.md)。
 
 通过 `videos.list` 请求 `snippet,contentDetails,status`，保存可取得的标题、频道、封面 URL、Description、时长和嵌入状态。API Key 仅在 Worker，API 无结果或不可访问时保留原链接并标记预览失败。[YouTube videos.list](https://developers.google.com/youtube/v3/docs/videos/list)
 
@@ -227,7 +227,7 @@ Description 允许为空，非空时按原语言保存为纯文本。链接展�
 
 YouTube API 对存储的数据有刷新/删除要求。设计在获取后第 29 天安排元数据刷新，第 30 天前若仍未刷新成功则清除 API 派生标题、描述、封面、时长等缓存；后台清理任务和读取时的过期过滤双重保证。用户提交的链接、解析出的 video ID 和分享历史独立保留。已无有效分享的内容直接清理缓存即可。这是 API 缓存维护，不构成失效恢复服务，不触发 LLM。[YouTube API 数据存储政策](https://developers.google.com/youtube/terms/developer-policies)
 
-刷新失败但未到过期时间可继续展示原缓存并记录刷新状态；到期清除 API 元数据，但保留已生成的音频摘要及其搜索能力，不把过期描述返回给 Agent。元数据缺失时仍可安排刷新；刷新不调用模型，也不将摘要失败标记为成功。备份恢复后先执行过期清理再对外服务，避免重新提供过期缓存。
+刷新失败但未到过期时间可继续展示原缓存并记录刷新状态；到期清除 API 元数据，但保留已生成的视频摘要及其搜索能力，不把过期描述返回给 Agent。元数据缺失时仍可安排刷新；刷新不调用模型，也不将摘要失败标记为成功。备份恢复后先执行过期清理再对外服务，避免重新提供过期缓存。
 
 ## 7. REST 与 MCP 契约
 
@@ -274,7 +274,7 @@ YouTube API 对存储的数据有刷新/删除要求。设计在获取后第 29 
 统一分享 DTO 必须含：`share_id`、`content_id`、`sharer`、`shared_at`、`type`、`title`（可空）、`original_url`、`normalized_url`、`processing_status`、`source`、`full_content_available:false`、`content_scope_note`。
 
 - 文章成功：`source=ai_article_summary`、`article_summary={overview,key_points}`。
-- 视频摘要成功：`source=ai_video_summary`、`video_summary={overview,key_points}`；明确仅基于音频，`article_summary=null`。
+- 视频摘要成功：`source=ai_video_summary`、`video_summary={overview,key_points}`；新摘要注明语音及采样画面，历史音频摘要保留旧来源说明；`article_summary=null`。
 - 无视频摘要但作者描述缓存有效：`source=youtube_description`、`video_description`，空字符串描述仍使用此来源。
 - 尚无摘要及有效描述：`source=none`。历史描述型 ready 视频保留兼容；新视频须摘要完成才标记 ready。
 - 保留必要错误码与可重试标识；不要把“没有全文”理解为“摘要处理失败”。
@@ -320,9 +320,9 @@ Library 的首批 10 条服务端渲染；客户端通过 IntersectionObserver �
 
 ## 9. 用量、额度与技术限流
 
-当前 Gemini API 项目使用 Free tier，文章摘要的文本输入/输出没有 Gemini API 费用；主要供应商约束是按项目和模型计算的 RPM、输入 TPM 与 RPD，实际值以 AI Studio 显示为准。RPD 在太平洋时间午夜重置，不能用应用的 UTC 月度额度替代。现有可选产品额度仍默认关闭，含义是“共享空间每个 UTC 自然月的模型调用次数（文章摘要、视频音频信息提取及摘要）”；它只是额外保护，自动和手动重试的实际调用都计入。模型调用前失败的抓取或音频下载、元数据刷新、读接口及摘要复用不消耗模型调用额度。视频的音频提取与摘要分别计入一次调用。
+当前 Gemini API 项目使用 Free tier，已知输入/输出按配置记录零估算费用。主要供应商约束为项目和模型的 RPM、输入 TPM、RPD，以 AI Studio 为准；应用 UTC 月度额度不能替代它们。可选产品额度仍默认关闭，统计文章及视频实际模型调用次数；自动/手动重试的实际调用均计入。模型请求前失败、元数据刷新、读取和摘要复用不消耗模型调用额度。每个新视频为一次调用，历史两次音频调用不改写。
 
-Worker 在模型请求前通过事务锁检查已消耗与已预留单位；文章预留 1 单位、视频原子预留 2 单位。视频两次调用分别写入 usage_events（audio_extract / summary，invocation_index=1 / 2）。失败或租约对账时释放未发送部分，已发出但结果未知仍计入；不会因第一步失败把第二次未发送调用记为已消耗。
+Worker 在模型请求前通过事务锁检查已消耗与已预留单位；文章和视频均预留 1 单位。新视频写入 `video_summary`、`invocation_index=1`，旧 `audio_extract` / `summary` 保留。未发送部分释放，已发出但未知结果保守计量；完整但不可访问/摘要无效的响应保留已知用量。`usage_details` 保存白名单缓存和输入模态计数，`cached_input_price_per_million` 保存价格快照；费用估算按缓存与非缓存输入分别计算，缺用量或对应价格时留空。
 
 产品月额度超额任务进入 `deferred_quota`；月切换、提高额度或关闭额度时，由幂等扫描器重新入队。当前 Gemini 429 按处理失败记录，分享链接保留，额度恢复后用户可手动重试。试用中若频繁触发，再实现供应商 RPM/TPM/RPD 的并发安全预留、等待窗口及幂等自动恢复；此增强不需要新增管理页面。
 

@@ -2,11 +2,13 @@
 
 适用仓库：[TAO44123/Authright_Sharing](https://github.com/TAO44123/Authright_Sharing)。本文包含部署步骤与 2026-09-29 的实际更新记录。命令除特别说明外，均在 **Lightsail 的 Ubuntu SSH 终端**执行。
 
-2026-09-29 部署记录：服务器从 GitHub 快进至 `cdca1f0`，构建并启用 `sharing:cdca1f0`，运行 `0003_lively_ikaris`，队列期限确认 1020 秒。迁移前的数据库备份保存在服务器 `/home/ubuntu/sharing-backups/sharing-pre-cdca1f0-20260929T003422Z.dump`，已通过 `pg_restore --list` 检查。Web、Worker、Caddy、PostgreSQL 运行正常，`https://sharing.authright.com/api/health` 返回数据库可达。一次性数据库中的 Andrew Ng 长视频验收在下载阶段失败：yt-dlp 返回 YouTube 的 `Sign in to confirm you’re not a bot`；Claude.ai 短视频及 Android 提取客户端也触发同样限制。未调用 Gemini，正式 1 条分享保持原状，验收用数据库已清理。当前生产音频摘要**尚未通过验收**；需解决服务器出口的 YouTube 下载权限后重新执行真实样本验证。
+历史音频版本部署记录（2026-09-29）：服务器从 GitHub 快进至 `cdca1f0`，构建并启用 `sharing:cdca1f0`，运行 `0003_lively_ikaris`，队列期限确认 1020 秒。迁移前的数据库备份保存在服务器 `/home/ubuntu/sharing-backups/sharing-pre-cdca1f0-20260929T003422Z.dump`，已通过 `pg_restore --list` 检查。Web、Worker、Caddy、PostgreSQL 运行正常，`https://sharing.authright.com/api/health` 返回数据库可达。一次性数据库中的 Andrew Ng 长视频验收在下载阶段失败：yt-dlp 返回 YouTube 的 `Sign in to confirm you’re not a bot`；Claude.ai 短视频及 Android 提取客户端也触发同样限制。未调用 Gemini，正式 1 条分享保持原状，验收用数据库已清理。该旧版本生产音频摘要未通过验收。新版改为 URL 非流式输入，见下方更新说明。
 
-后续隔离诊断：在 Lightsail 一次性容器中更新至 yt-dlp 2026.09.27、加载 bgutil PO Token 插件并改用 `mweb`、以及使用服务器 IPv6，均仍在播放器信息阶段遇到相同的人机验证。本地同一视频可解析；通过仅监听服务器本机的临时 SSH SOCKS 隧道，一次性容器成功下载该视频完整 M4A 音轨。这验证了外部可用出口的路径，但临时隧道不是常驻生产服务。Worker 增加 `YOUTUBE_PROXY_URL` 后，可在 `/etc/sharing/lightsail.env` 填入经过验证的稳定代理，并重建/重启 Worker，再用隔离测试库和真实分享验收；代理留空时行为不变。代理地址只接受无凭据的 HTTP(S)/SOCKS5 URL，不应暴露到公网。
+历史音轨诊断：yt-dlp 更新、PO Token、mweb 和 IPv6 均触发人机验证，临时 SSH SOCKS 出口曾下载成功。该结论仅适用于旧下载方案。新版 Worker 已改为 Gemini 直接读取 YouTube URL，不使用下载代理；移除 Compose 的 `YOUTUBE_PROXY_URL`，服务器配置可删除历史工具/代理变量，凭据继续保留。
 
 最初的本地部署演练记录（2026-09-28，Docker Desktop/Linux ARM64）：Compose 配置解析、Docker 镜像构建、空库迁移、管理员初始化、Web 健康检查、OAuth discovery 运行时域名、Worker 暂停模式启动、Caddy 配置校验及 PostgreSQL 备份/新库恢复均通过。该次本地演练未验证 AWS 实例、公网证书、生产 Google 登录或真实供应商请求；它不替代后来独立的部署检查。构建时 Better Auth 会尝试访问占位数据库并输出连接拒绝日志，但构建退出码为 0，运行时连接真实测试库和 discovery 检查通过；后续可单独优化这一构建日志问题。
+
+2026-09-29 当前更新：固定 IP 为 `174.129.205.232`，域名为 `sharing.authright.com`。现有容器的短/长视频非流式 URL 探测均成功；新版 Worker 和 `0004` 迁移已在代码中准备，尚未部署。下一次更新按第 7 节从 GitHub 拉取后发布，不直接改生产源码。
 
 ## 1. 目标和准备项
 
@@ -130,7 +132,7 @@ dc ps
 
 任何一步失败都应先处理再继续。`ops` 运行现有 Drizzle 迁移及 pg-boss 队列初始化；bootstrap 应在管理员首次 Google 登录前执行。若该邮箱已经是普通成员，脚本会拒绝静默提升权限。
 
-镜像同时包含 Web、编译后的 Worker、迁移工具和 yt-dlp/EJS/FFmpeg；生产启动命令直接使用容器环境变量，无需容器内 `.env`。Web 在容器网络监听 `0.0.0.0:3000`，仅 Caddy 发布公网端口。为方便首版运维，镜像保留构建及迁移依赖，后续可再缩减体积。
+镜像同时包含 Web、编译后的 Worker 和迁移工具，URL 流程已移除 Python/yt-dlp/EJS/FFmpeg 依赖；生产启动命令直接使用容器环境变量，无需容器内 `.env`。Web 在容器网络监听 `0.0.0.0:3000`，仅 Caddy 发布公网端口。为方便首版运维，镜像保留构建及迁移依赖，后续可再缩减体积。
 
 构建只使用假配置，真实凭据在容器启动时注入。`node:24-bookworm-slim` 与 `caddy:2` 是可变标签，首次验证通过后记录实际镜像 ID/digest；应用每次使用 Git SHA 标签，保留上一版本镜像。后续基础镜像更新应单独验证后部署。
 
@@ -156,7 +158,7 @@ dc logs --tail=100 web worker caddy
 - 将用于远程测试的 plugin/MCP 配置 URL 改为 `https://sharing.example.com/mcp`，重新完成 OAuth，并实际执行 `list_shares`、`share_link`、`get_share`。当前仓库本地 plugin 配置仍指向 localhost；远程打包、分发属于下一步工作。
 - 在维护窗口执行主机重启，重新 SSH 后 `dc ps` 并再次检查 health、登录和 Worker 心跳；确认数据仍在。
 
-基础服务验收后，再在 `/etc/sharing/lightsail.env` 填入真实 Gemini、YouTube API key 和正确 `GEMINI_BILLING_TIER`，改 `CONTENT_PROCESSING_ENABLED=true`，执行 `dc up -d worker`。这会处理既有积压任务。分别提交一篇文章、一条 YouTube 链接验证结果；长视频还须验证 Gemini Files API 上传、模型引用和远端文件清理。Worker 使用音轨提取和 Gemini 两阶段摘要；部署前须执行新迁移及队列期限更新，重建含 yt-dlp/EJS/FFmpeg 的镜像，并确认临时工作目录有足够空间，见 [音轨处理](YOUTUBE_AUDIO_WORKER.md)。Claude.ai 短视频与 Andrew Ng 110 分钟视频已在本地 Worker 成功落库。2026-09-29 的 Lightsail 版本更新和数据库迁移均完成，但 YouTube 拦截服务器出口，音轨下载与 Gemini 摘要的生产验收仍待完成。
+基础服务验收后，在 `/etc/sharing/lightsail.env` 配置真实 Gemini/YouTube API key 和正确 `GEMINI_BILLING_TIER`，设置 `CONTENT_PROCESSING_ENABLED=true`，启动 Worker 会处理既有积压。先按第 7 节从 GitHub 拉取新版、构建、备份、停止旧 Web/Worker、执行 `0004` 迁移并启动同版本服务。分别验收文章、短视频和约 110 分钟长视频；视频应为一次 `video_summary` 事件、单单位预留、`youtube-url-en-v1` 和语音/采样画面来源说明，元数据刷新不能新增模型调用。视频请求非流式、最长 600 秒，不使用 Files API 或下载工具。API 探测成功不等于新 Worker 部署验收，见 [当前验证](validation/YOUTUBE_URL_GEMINI.md)。
 
 ## 7. 后续更新和回滚
 
@@ -226,8 +228,9 @@ dc exec -T postgres psql -U sharing -d "$SHARING_RESTORE_DB" \
 | Caddy 502 / Web unhealthy | `dc logs web`、`dc ps`、数据库密码/迁移、真实环境变量 |
 | Google redirect mismatch | Console 回调 URI 与实际域名必须逐字一致 |
 | MCP 401 | 未授权请求通常预期 401；检查生产 discovery、客户端重新 OAuth、权限和连接是否已撤销 |
-| 内容一直 queued | 检查 Worker 进程、worker_ready 的 contentConsumption、心跳和 API key；Web 在线或开关为 true 不代表 Worker 已运行。界面的 Generating 提示也可能只是排队 |
-| 音频工具不可用 | 检查是否重建含 yt-dlp/EJS/FFmpeg 的新镜像；本地主机工具路径与容器路径互不通用 |
+| 内容一直 queued | 检查 Worker 进程、worker_ready 的 contentConsumption、心跳和 API key；Web 在线或开关为 true 不代表 Worker 已运行。新版界面区分 queued 和 Generating；旧镜像提示可能只是排队 |
+| 历史 AUDIO_* 失败 | 升级到 URL Worker 后手动重试；新流程不再使用下载工具 |
+| VIDEO_UNAVAILABLE | 核对公开视频可访问性和 Gemini 返回结果，保留分享，不以描述替代摘要 |
 | Gemini 429 / 503 | 分别检查配额或服务可用性；503 本身不能证明免费额度耗尽 |
 | 构建被 killed | 实例内存/磁盘；必要时升级实例或改为 CI 构建镜像 |
 | 重建后丢数据 | 是否用了开发 Compose、不同 project 名称或误删 volume |

@@ -3,6 +3,12 @@ import type { shareOutput } from "@/contracts";
 export type Share = z.infer<typeof shareOutput>;
 export function statusLabel(share: Share) {
   if (share.status === "ready") return "Ready";
+  if (share.status === "queued")
+    return share.type === "youtube" ? "Video summary queued" : "Summary queued";
+  if (share.status === "processing")
+    return share.type === "youtube"
+      ? "Generating video summary"
+      : "Generating summary";
   if (share.status === "deferred_quota")
     return "Summary paused — usage limit reached";
   if (share.failure_code === "AUDIO_TOOLS_UNAVAILABLE")
@@ -17,6 +23,8 @@ export function statusLabel(share: Share) {
   if (share.failure_code === "SUMMARY_RATE_LIMITED")
     return "Gemini usage limit reached — retry later";
   if (share.failure_code === "METADATA_EXPIRED") return "Video preview expired";
+  if (share.failure_code === "VIDEO_UNAVAILABLE")
+    return "This video could not be accessed";
   if (share.failure_code === "AUDIO_TOO_LARGE")
     return "Video audio exceeds the processing size limit";
   if (share.failure_code === "AUDIO_UNAVAILABLE")

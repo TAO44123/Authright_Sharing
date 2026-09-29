@@ -5,6 +5,7 @@ export class ProcessingError extends Error {
     public code: string,
     public retryable = false,
     public outcomeUnknown = false,
+    public usage?: ModelUsage,
   ) {
     super(code);
   }
@@ -14,6 +15,15 @@ export type ModelUsage = {
   inputTokens: number | null;
   outputTokens: number | null;
   providerRequestId?: string;
+  usageDetails?: {
+    promptTokenCount?: number;
+    candidatesTokenCount?: number;
+    thoughtsTokenCount?: number;
+    totalTokenCount?: number;
+    cachedContentTokenCount?: number;
+    promptTokensDetails?: { modality: string; tokenCount: number }[];
+    cacheTokensDetails?: { modality: string; tokenCount: number }[];
+  };
 };
 export type SummaryResult = ModelUsage & {
   summary: z.infer<typeof articleSummary>;
@@ -37,7 +47,18 @@ export type SummaryPricing = {
   currency: "USD";
   inputPerMillion: string;
   outputPerMillion: string;
+  cachedInputPerMillion?: string;
 };
+export interface VideoSummaryProvider {
+  readonly configured: boolean;
+  readonly model: string;
+  readonly pricing?: SummaryPricing;
+  summarize(input: {
+    videoId: string;
+    durationSeconds: number | null;
+    signal: AbortSignal;
+  }): Promise<SummaryResult>;
+}
 export interface SummaryProvider {
   readonly configured: boolean;
   readonly model: string;

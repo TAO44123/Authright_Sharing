@@ -64,7 +64,11 @@ export default async function ShareDetail({
               : "AI article summary"}
           </h2>
           {share.type === "youtube" && (
-            <p className="muted">Based on the video’s audio.</p>
+            <p className="muted">
+              {share.content_scope_note.includes("audio only")
+                ? "Based on the video’s audio."
+                : "Based on the video’s spoken content and sampled visuals."}
+            </p>
           )}
           <p className="overview">{summary.overview}</p>
           <ul>

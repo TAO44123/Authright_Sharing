@@ -933,6 +933,16 @@ it("A3 keeps independent shares, safe DTOs, literal search, ownership and retry 
   });
   await db
     .update(contents)
+    .set({ promptVersion: "youtube-url-en-v1" })
+    .where(eq(contents.id, video.share.content_id));
+  const videoSummary = await getShare(actor, video.share.id);
+  expect(videoSummary.source).toBe("ai_video_summary");
+  expect(videoSummary.content_scope_note).toContain(
+    "spoken content and sampled visuals",
+  );
+  expect(videoSummary.content_scope_note).not.toContain("audio only");
+  await db
+    .update(contents)
     .set({ summaryOverview: null, summaryKeyPoints: null })
     .where(eq(contents.id, video.share.content_id));
   await db

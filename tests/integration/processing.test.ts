@@ -102,23 +102,31 @@ it("A4 processes articles/videos, reserves quota, resumes once, fences stale wor
           text: "TEMPORARY_BODY_MUST_NOT_PERSIST",
           author: "Author",
         }),
-        audio: {
+        videoSummary: {
           configured: true,
           model: "fixture-model",
-          extract: vi.fn(async () => ({
-            notes: {
-              language: "en",
-              notes: ["TEMPORARY_AUDIO_NOTES_MUST_NOT_PERSIST"],
-              uncertainties: [],
+          pricing: {
+            version: "fixture-video",
+            currency: "USD",
+            inputPerMillion: "0.30",
+            outputPerMillion: "2.50",
+            cachedInputPerMillion: "0.03",
+          },
+          summarize: vi.fn(async () => ({
+            summary: {
+              overview: "An English overview.",
+              key_points: ["First point", "Second point", "Third point"],
             },
             model: "fixture-model",
-            inputTokens: 800,
-            outputTokens: 100,
+            inputTokens: 1000,
+            outputTokens: 50,
+            usageDetails: {
+              promptTokenCount: 1000,
+              cachedContentTokenCount: 800,
+              promptTokensDetails: [{ modality: "VIDEO", tokenCount: 1000 }],
+            },
           })),
         },
-        downloadAudio: vi.fn(async () =>
-          Buffer.from("AUDIO_BYTES_MUST_NOT_PERSIST"),
-        ),
         video: async () => ({
           title: "A video",
           videoDescription: "",
@@ -150,7 +158,7 @@ it("A4 processes articles/videos, reserves quota, resumes once, fences stale wor
       ]);
       const video = await seed("youtube");
       await processContentJob(video.jobId, deps);
-      expect(summarize).toHaveBeenCalledTimes(2);
+      expect(summarize).toHaveBeenCalledTimes(1);
       expect(
         (
           await db
@@ -162,7 +170,7 @@ it("A4 processes articles/videos, reserves quota, resumes once, fences stale wor
         status: "ready",
         videoDescription: "",
         summaryModel: "fixture-model",
-        promptVersion: "youtube-audio-en-v1",
+        promptVersion: "youtube-url-en-v1",
       });
       const videoAttempt = (
         await db
@@ -177,24 +185,30 @@ it("A4 processes articles/videos, reserves quota, resumes once, fences stale wor
           .where(eq(usageEvents.attemptId, videoAttempt.id)),
       ).toMatchObject([
         {
-          service: "audio_extract",
+          service: "video_summary",
           invocationIndex: 1,
           status: "succeeded",
-          inputTokens: 800,
-        },
-        {
-          service: "summary",
-          invocationIndex: 2,
-          status: "succeeded",
-          inputTokens: 100,
+          inputTokens: 1000,
+          usageDetails: { cachedContentTokenCount: 800 },
+          estimatedAmount: "0.0002090000",
+          cachedInputPricePerMillion: "0.0300000000",
         },
       ]);
-      expect(summarize).toHaveBeenLastCalledWith(
+      expect(deps.videoSummary!.summarize).toHaveBeenCalledTimes(1);
+      expect(deps.videoSummary!.summarize).toHaveBeenLastCalledWith(
         expect.objectContaining({
-          sourceType: "youtube",
-          text: expect.stringContaining("TEMPORARY_AUDIO_NOTES"),
+          videoId: "dQw4w9WgXcQ",
+          durationSeconds: 90,
         }),
       );
+      expect(
+        (
+          await db
+            .select()
+            .from(quotaReservations)
+            .where(eq(quotaReservations.attemptId, videoAttempt.id))
+        )[0],
+      ).toMatchObject({ units: 1, status: "consumed" });
       await db
         .update(settings)
         .set({ quotaEnabled: true, monthlyCallLimit: 1 });
@@ -204,7 +218,7 @@ it("A4 processes articles/videos, reserves quota, resumes once, fences stale wor
         (await db.select().from(tasks).where(eq(tasks.id, deferred.task.id)))[0]
           .state,
       ).toBe("deferred_quota");
-      expect(summarize).toHaveBeenCalledTimes(2);
+      expect(summarize).toHaveBeenCalledTimes(1);
       await db.update(settings).set({ monthlyCallLimit: 4 });
       await maintainContent(boss, db);
       await maintainContent(boss, db);
@@ -217,7 +231,7 @@ it("A4 processes articles/videos, reserves quota, resumes once, fences stale wor
         resumed.find((task) => task.generation === 2)!.jobId,
         deps,
       );
-      expect(summarize).toHaveBeenCalledTimes(3);
+      expect(summarize).toHaveBeenCalledTimes(2);
       await db.update(settings).set({ quotaEnabled: false });
       const freeTier = await seed();
       await processContentJob(freeTier.jobId, {
@@ -423,7 +437,7 @@ it("A4 processes articles/videos, reserves quota, resumes once, fences stale wor
       });
       await processContentJob(partial.jobId, {
         ...deps,
-        summary: { ...deps.summary, summarize: failsOnSummary },
+        videoSummary: { ...deps.videoSummary!, summarize: failsOnSummary },
       });
       await processContentJob(partial.jobId, deps);
       const partialAttempt = (
@@ -437,10 +451,7 @@ it("A4 processes articles/videos, reserves quota, resumes once, fences stale wor
           .select()
           .from(usageEvents)
           .where(eq(usageEvents.attemptId, partialAttempt.id)),
-      ).toMatchObject([
-        { service: "audio_extract", status: "succeeded" },
-        { service: "summary", status: "failed" },
-      ]);
+      ).toMatchObject([{ service: "video_summary", status: "failed" }]);
       expect(failsOnSummary).toHaveBeenCalledTimes(1);
       expect(
         (
@@ -466,7 +477,7 @@ it("A4 processes articles/videos, reserves quota, resumes once, fences stale wor
       );
       await processContentJob(extractionFailure.jobId, {
         ...deps,
-        audio: { ...deps.audio!, extract: failedExtract },
+        videoSummary: { ...deps.videoSummary!, summarize: failedExtract },
         summary: { ...deps.summary, summarize: summaryAfterFailure },
       });
       await processContentJob(extractionFailure.jobId, deps);
@@ -496,8 +507,8 @@ it("A4 processes articles/videos, reserves quota, resumes once, fences stale wor
       const downloadFailure = await seed("youtube");
       await processContentJob(downloadFailure.jobId, {
         ...deps,
-        downloadAudio: async () => {
-          throw new ProcessingError("AUDIO_DOWNLOAD_FAILED");
+        video: async () => {
+          throw new ProcessingError("VIDEO_UNAVAILABLE");
         },
       });
       const downloadAttempt = (
@@ -513,7 +524,56 @@ it("A4 processes articles/videos, reserves quota, resumes once, fences stale wor
           .where(eq(usageEvents.attemptId, downloadAttempt.id)),
       ).toHaveLength(0);
 
-      // Only one call of quota remains: reserve neither of the two video calls.
+      // A complete unavailable response still has billable usage, but no summary.
+      const inaccessible = await seed("youtube");
+      const inaccessibleSummary = vi.fn(async () => {
+        throw new ProcessingError("VIDEO_UNAVAILABLE", false, false, {
+          model: "fixture-model",
+          inputTokens: 1000,
+          outputTokens: 50,
+          usageDetails: { cachedContentTokenCount: 800 },
+        });
+      });
+      const inaccessibleDeps = {
+        ...deps,
+        videoSummary: { ...deps.videoSummary!, summarize: inaccessibleSummary },
+      };
+      await processContentJob(inaccessible.jobId, inaccessibleDeps);
+      await processContentJob(inaccessible.jobId, inaccessibleDeps);
+      expect(inaccessibleSummary).toHaveBeenCalledTimes(1);
+      expect(
+        (
+          await db
+            .select()
+            .from(contents)
+            .where(eq(contents.id, inaccessible.content.id))
+        )[0],
+      ).toMatchObject({
+        status: "failed",
+        failureCode: "VIDEO_UNAVAILABLE",
+        summaryOverview: null,
+      });
+      const [inaccessibleAttempt] = await db
+        .select()
+        .from(attempts)
+        .where(eq(attempts.taskId, inaccessible.task.id));
+      expect(
+        await db
+          .select()
+          .from(usageEvents)
+          .where(eq(usageEvents.attemptId, inaccessibleAttempt.id)),
+      ).toMatchObject([
+        {
+          service: "video_summary",
+          status: "failed",
+          usageKnown: true,
+          inputTokens: 1000,
+          outputTokens: 50,
+          estimatedAmount: "0.0002090000",
+        },
+      ]);
+
+      // Exactly one quota unit remains: a video must be admitted.
       const allReservations = await db.select().from(quotaReservations);
       await db.update(settings).set({
         quotaEnabled: true,
@@ -524,13 +584,45 @@ it("A4 processes articles/videos, reserves quota, resumes once, fences stale wor
       });
       const videoDeferred = await seed("youtube");
       await processContentJob(videoDeferred.jobId, deps);
-      await maintainContent(boss, db);
       expect(
+        (
+          await db
+            .select()
+            .from(tasks)
+            .where(eq(tasks.id, videoDeferred.task.id))
+        )[0].state,
+      ).toBe("completed");
+      const waitingVideo = await seed("youtube");
+      await processContentJob(waitingVideo.jobId, deps);
+      expect(
+        (
+          await db
+            .select()
+            .from(tasks)
+            .where(eq(tasks.id, waitingVideo.task.id))
+        )[0].state,
+      ).toBe("deferred_quota");
+      const [limit] = await db.select().from(settings);
+      await db
+        .update(settings)
+        .set({ monthlyCallLimit: limit.monthlyCallLimit! + 1 });
+      await maintainContent(boss, db);
+      const [resumedVideo] = (
         await db
           .select()
           .from(tasks)
-          .where(eq(tasks.contentId, videoDeferred.content.id)),
-      ).toMatchObject([{ state: "deferred_quota" }]);
+          .where(eq(tasks.contentId, waitingVideo.content.id))
+      ).filter((t) => t.generation === 2);
+      expect(resumedVideo.state).toBe("queued");
+      await processContentJob(resumedVideo.jobId, deps);
+      expect(
+        (
+          await db
+            .select()
+            .from(contents)
+            .where(eq(contents.id, waitingVideo.content.id))
+        )[0].status,
+      ).toBe("ready");
       // Refreshes must not call a model or turn a failed summary into ready.
       await db.update(settings).set({ quotaEnabled: false });
       const refresh = await seed("youtube");
@@ -542,9 +634,12 @@ it("A4 processes articles/videos, reserves quota, resumes once, fences stale wor
         .update(contents)
         .set({ status: "failed", failureCode: "SUMMARY_RATE_LIMITED" })
         .where(eq(contents.id, refresh.content.id));
-      const callsBeforeRefresh = summarize.mock.calls.length;
+      const callsBeforeRefresh = vi.mocked(deps.videoSummary!.summarize).mock
+        .calls.length;
       await processContentJob(refresh.jobId, deps);
-      expect(summarize).toHaveBeenCalledTimes(callsBeforeRefresh);
+      expect(deps.videoSummary!.summarize).toHaveBeenCalledTimes(
+        callsBeforeRefresh,
+      );
       expect(
         (
           await db
