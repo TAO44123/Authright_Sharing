@@ -63,6 +63,8 @@ Claude.ai 的 generation=2 于 22:54 UTC 因 `AUDIO_TOOLS_UNAVAILABLE` 失败：
 
 Lightsail Compose 的 Worker 退出等待改为 16 分钟。生产 Worker 当前已启用。服务器出口实际触发 YouTube 人机验证，两条公开视频及 Android 提取客户端均无法取得音轨；此前本地成功不代表该 IP 可下载。部署详情见 [Lightsail 记录](DEPLOY_LIGHTSAIL.md)。
 
+Worker 可通过 `YOUTUBE_PROXY_URL` 单独给 yt-dlp 指定出站代理，支持不含账号密码的 `http://`、`https://`、`socks5://` 和 `socks5h://` 地址；留空时直接访问。该设置不作用于 Gemini、YouTube Data API 或网页请求，也不会把应用密钥传给 yt-dlp。代理须由运维方提供稳定、可信且允许访问 YouTube 的出口；不要把代理账号密码写进 URL，因为命令行参数可被同机进程读取。临时 SSH 隧道仅适合验收，隧道断开后无法继续下载。
+
 ## 长视频修订
 
 Andrew Ng 样本（`58n-n-3oRic`）长 6617 秒，原始 M4A 107090892 bytes。旧版本超过 100 MiB 时 yt-dlp 跳过下载但退出码仍为 0，应用误记 `AUDIO_UNAVAILABLE`。现在识别该跳过信息为 `AUDIO_TOO_LARGE`，同时按用户要求扩大容量并接入 Files API，模型仍只执行音频提取和摘要两次调用。实际复测结果见 [验证记录](validation/YOUTUBE_AUDIO_GEMINI.md)。

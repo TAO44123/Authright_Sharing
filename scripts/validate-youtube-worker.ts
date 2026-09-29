@@ -100,6 +100,7 @@ try {
           downloadYoutubeAudio(id, signal, {
             ytDlpPath: process.env.YT_DLP_PATH,
             ffmpegPath: process.env.FFMPEG_PATH,
+            proxyUrl: process.env.YOUTUBE_PROXY_URL,
           }),
       });
       const [result] = await database.select().from(contents);

@@ -25,6 +25,28 @@ const origin = z
     );
   })
   .transform((value) => new URL(value).origin);
+const youtubeProxyUrl = z.preprocess(
+  (value) => (value === "" ? undefined : value),
+  z
+    .string()
+    .refine((value) => {
+      try {
+        const url = new URL(value);
+        return (
+          ["http:", "https:", "socks5:", "socks5h:"].includes(url.protocol) &&
+          Boolean(url.hostname) &&
+          !url.username &&
+          !url.password &&
+          (!url.pathname || url.pathname === "/") &&
+          !url.search &&
+          !url.hash
+        );
+      } catch {
+        return false;
+      }
+    })
+    .optional(),
+);
 export const databaseEnvSchema = z.object({ DATABASE_URL: postgresUrl });
 export const logEnvSchema = z.object({
   LOG_LEVEL: z
@@ -84,6 +106,7 @@ export const workerEnvSchema = databaseEnvSchema
       .transform((value) => value === "true"),
     YT_DLP_PATH: z.string().min(1).default("yt-dlp"),
     FFMPEG_PATH: z.string().min(1).default("ffmpeg"),
+    YOUTUBE_PROXY_URL: youtubeProxyUrl,
     YOUTUBE_API_KEY: z.string().optional(),
     GEMINI_API_KEY: z.string().optional(),
     GEMINI_BILLING_TIER: z.enum(["free", "paid"]).optional(),

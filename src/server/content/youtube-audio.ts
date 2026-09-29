@@ -59,7 +59,7 @@ async function run(
 export async function downloadYoutubeAudio(
   videoId: string,
   parentSignal: AbortSignal,
-  options: { ytDlpPath?: string; ffmpegPath?: string } = {},
+  options: { ytDlpPath?: string; ffmpegPath?: string; proxyUrl?: string } = {},
 ): Promise<Buffer> {
   if (!/^[A-Za-z0-9_-]{11}$/.test(videoId))
     throw new ProcessingError("INVALID_VIDEO_ID");
@@ -103,6 +103,7 @@ export async function downloadYoutubeAudio(
         "--js-runtimes",
         `node:${process.execPath}`,
         "--no-remote-components",
+        ...(options.proxyUrl ? ["--proxy", options.proxyUrl] : []),
         "--retries",
         "0",
         "--fragment-retries",

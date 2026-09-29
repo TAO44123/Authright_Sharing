@@ -80,6 +80,18 @@ describe("environment boundaries", () => {
         GEMINI_BILLING_TIER: "free",
       }),
     ).toMatchObject({ GEMINI_BILLING_TIER: "free" });
+    expect(
+      readEnv(workerEnvSchema, {
+        DATABASE_URL: env.DATABASE_URL,
+        YOUTUBE_PROXY_URL: "socks5://proxy.internal:1080",
+      }).YOUTUBE_PROXY_URL,
+    ).toBe("socks5://proxy.internal:1080");
+    expect(() =>
+      readEnv(workerEnvSchema, {
+        DATABASE_URL: env.DATABASE_URL,
+        YOUTUBE_PROXY_URL: "socks5://user:secret@proxy.internal:1080",
+      }),
+    ).toThrow("YOUTUBE_PROXY_URL");
   });
 });
 it("logs only correlation metadata, dropping nested credentials, bodies, errors and messages", () => {

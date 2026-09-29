@@ -53,16 +53,22 @@ it("downloads audio only, converts the full file and deletes temporary files", a
   const result = await downloadYoutubeAudio(
     "0vZ_UVLhSQQ",
     new AbortController().signal,
+    { proxyUrl: "socks5://proxy.internal:1080" },
   );
   expect(result.toString()).toBe("converted-mp3");
   const [command, args, options] = launch.mock.calls[0];
   expect(command).toBe("yt-dlp");
   expect(args).toContain("bestaudio[ext=m4a]/bestaudio");
   expect(args).toContain("--ignore-config");
+  expect(args?.slice(args.indexOf("--proxy"), args.indexOf("--proxy") + 2)).toEqual([
+    "--proxy",
+    "socks5://proxy.internal:1080",
+  ]);
   expect(args?.at(-1)).toBe("https://www.youtube.com/watch?v=0vZ_UVLhSQQ");
   expect(options).not.toHaveProperty("shell");
   expect(options?.env).not.toHaveProperty("GEMINI_API_KEY");
   expect(launch.mock.calls[1][1]).not.toContain("-t");
+  expect(launch.mock.calls[1][1]).not.toContain("--proxy");
   await expect(access(folder)).rejects.toThrow();
 });
 

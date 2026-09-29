@@ -62,6 +62,7 @@ if (enabled) {
               downloadYoutubeAudio(id, signal, {
                 ytDlpPath: workerConfig.YT_DLP_PATH,
                 ffmpegPath: workerConfig.FFMPEG_PATH,
+                proxyUrl: workerConfig.YOUTUBE_PROXY_URL,
               }),
             acquireSummarySlot,
             youtubeKey: workerConfig.YOUTUBE_API_KEY,

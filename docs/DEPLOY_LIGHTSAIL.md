@@ -4,6 +4,8 @@
 
 2026-09-29 部署记录：服务器从 GitHub 快进至 `cdca1f0`，构建并启用 `sharing:cdca1f0`，运行 `0003_lively_ikaris`，队列期限确认 1020 秒。迁移前的数据库备份保存在服务器 `/home/ubuntu/sharing-backups/sharing-pre-cdca1f0-20260929T003422Z.dump`，已通过 `pg_restore --list` 检查。Web、Worker、Caddy、PostgreSQL 运行正常，`https://sharing.authright.com/api/health` 返回数据库可达。一次性数据库中的 Andrew Ng 长视频验收在下载阶段失败：yt-dlp 返回 YouTube 的 `Sign in to confirm you’re not a bot`；Claude.ai 短视频及 Android 提取客户端也触发同样限制。未调用 Gemini，正式 1 条分享保持原状，验收用数据库已清理。当前生产音频摘要**尚未通过验收**；需解决服务器出口的 YouTube 下载权限后重新执行真实样本验证。
 
+后续隔离诊断：在 Lightsail 一次性容器中更新至 yt-dlp 2026.09.27、加载 bgutil PO Token 插件并改用 `mweb`、以及使用服务器 IPv6，均仍在播放器信息阶段遇到相同的人机验证。本地同一视频可解析；通过仅监听服务器本机的临时 SSH SOCKS 隧道，一次性容器成功下载该视频完整 M4A 音轨。这验证了外部可用出口的路径，但临时隧道不是常驻生产服务。Worker 增加 `YOUTUBE_PROXY_URL` 后，可在 `/etc/sharing/lightsail.env` 填入经过验证的稳定代理，并重建/重启 Worker，再用隔离测试库和真实分享验收；代理留空时行为不变。代理地址只接受无凭据的 HTTP(S)/SOCKS5 URL，不应暴露到公网。
+
 最初的本地部署演练记录（2026-09-28，Docker Desktop/Linux ARM64）：Compose 配置解析、Docker 镜像构建、空库迁移、管理员初始化、Web 健康检查、OAuth discovery 运行时域名、Worker 暂停模式启动、Caddy 配置校验及 PostgreSQL 备份/新库恢复均通过。该次本地演练未验证 AWS 实例、公网证书、生产 Google 登录或真实供应商请求；它不替代后来独立的部署检查。构建时 Better Auth 会尝试访问占位数据库并输出连接拒绝日志，但构建退出码为 0，运行时连接真实测试库和 discovery 检查通过；后续可单独优化这一构建日志问题。
 
 ## 1. 目标和准备项
