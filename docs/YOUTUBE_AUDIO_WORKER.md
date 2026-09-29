@@ -4,7 +4,7 @@
 
 ## 本地运行状态与启动检查
 
-以下为 2026-09-28 23:23 UTC 后检查的快照，不是实时监控：
+本地状态为 2026-09-28 23:23 UTC 的快照，Lightsail 状态更新于 2026-09-29；以下不是实时监控：
 
 | 项目 | 已确认状态 |
 | --- | --- |
@@ -15,7 +15,7 @@
 | Claude.ai 分享 | generation=3，completed，attempts=1；内容 ready，概述和 4 个要点已入库 |
 | 主机音频工具 | 已在忽略提交的 `.local/audio-tools` 安装 yt-dlp 2026.8.19、yt-dlp-ejs 0.8.0、imageio-ffmpeg 0.6.0（FFmpeg 7.1），`.env` 已设绝对路径 |
 | 新 Worker 实际生成 | Claude.ai 短视频和 Andrew Ng 110 分钟长视频均完整成功；后者 generation=5，耗时约 78 秒 |
-| Lightsail 音频版本 | 未部署；本地迁移不代表生产数据库已更新 |
+| Lightsail 音频版本 | 2026-09-29 已部署 `cdca1f0` 并应用迁移；YouTube 对服务器出口要求人机验证，生产音频摘要尚未通过验收 |
 
 当前界面把 queued 与 processing 都显示为 Generating summary / Generating video summary。排查时以数据库任务状态、attempts、started_at 和 Worker 日志为准。这里记录实际行为，没有把尚未实现的独立“排队中”文案当作已完成。
 
@@ -61,7 +61,7 @@ Claude.ai 的 generation=2 于 22:54 UTC 因 `AUDIO_TOOLS_UNAVAILABLE` 失败：
 
 部署顺序：备份数据库 → 构建新镜像 → 停止旧 Worker → 运行 `scripts/migrate.ts` → 替换 Web/Worker → 验证真实样本。迁移 `0003_lively_ikaris.sql` 放开视频摘要字段并允许两单位预留；迁移脚本也更新既有队列默认超时，并通过 pg-boss API 把尚未开始的排队任务更新为 1020 秒，保留任务 ID、载荷和重试状态。不能仅重启旧镜像；不要回滚数据约束到禁止视频摘要的版本。
 
-Lightsail Compose 的 Worker 退出等待改为 16 分钟。是否启用生产处理仍由现有环境配置决定。YouTube 可能限制机房 IP，部署环境须独立验收下载；本地成功不保证服务器 IP 可下载。
+Lightsail Compose 的 Worker 退出等待改为 16 分钟。生产 Worker 当前已启用。服务器出口实际触发 YouTube 人机验证，两条公开视频及 Android 提取客户端均无法取得音轨；此前本地成功不代表该 IP 可下载。部署详情见 [Lightsail 记录](DEPLOY_LIGHTSAIL.md)。
 
 ## 长视频修订
 

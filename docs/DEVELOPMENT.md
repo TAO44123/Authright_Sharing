@@ -6,7 +6,7 @@
 
 日期：2026-09-28
 
-状态：音频摘要代码、测试及本地迁移已完成；本地 Worker 已完成 Claude.ai 和 Andrew Ng 长视频摘要落库；音频版本尚未部署
+状态：音频摘要代码、测试及本地迁移已完成；本地 Worker 已完成 Claude.ai 和 Andrew Ng 长视频摘要落库；Lightsail 已部署代码和迁移，服务器音轨下载受 YouTube 人机验证阻挡
 
 关联：[开发计划与私有分发](./DEVELOPMENT_PLAN.md) · [PRD](./PRD.md) · [技术设计](./TECHNICAL_DESIGN.md)
 
@@ -14,7 +14,7 @@
 
 本文件维护工程结构、本地配置、验证策略和运维约定。任务划分、依赖、实施顺序及 Plugin 私有分发以 [开发计划](./DEVELOPMENT_PLAN.md) 为准；架构和接口语义以技术设计为准，产品边界以 PRD 为准。
 
-当前包含成员管理、分享查询/撤回/重试、文章摘要、YouTube 音频摘要、故障恢复、网页与 MCP。模板默认关闭消费；本地 `.env` 已启用处理。2026-09-28 23:23 UTC 检查时 Web 与 Worker 均在运行；主机音频工具已配置，Claude.ai 样本 generation=3 和 Andrew Ng 长视频 generation=5 均完成真实音频摘要并落库。此前 Gemini 503 为历史失败记录。音频版本尚未部署到 Lightsail。历史 A4 文章和视频元数据验收与本次音频验收分开记录，见 [音轨验证](./validation/YOUTUBE_AUDIO_GEMINI.md)。
+当前包含成员管理、分享查询/撤回/重试、文章摘要、YouTube 音频摘要、故障恢复、网页与 MCP。模板默认关闭消费；本地 `.env` 已启用处理。2026-09-28 23:23 UTC 检查时本地 Web 与 Worker 均在运行；主机音频工具已配置，Claude.ai 样本 generation=3 和 Andrew Ng 长视频 generation=5 均完成真实音频摘要并落库。此前 Gemini 503 为历史失败记录。2026-09-29 Lightsail 已部署同版本代码和迁移，但服务器出口触发 YouTube 人机验证，生产音频摘要尚未验收成功。历史 A4 文章和视频元数据验收与本次音频验收分开记录，见 [音轨验证](./validation/YOUTUBE_AUDIO_GEMINI.md)。
 
 每个阶段完成时：提交可运行代码及必要迁移，执行对应验证，记录结果和剩余限制，更新阶段复选框。真实第三方验证需记录日期、服务/客户端版本、实际结果；mock 测试只能证明应用内行为。
 

@@ -1,6 +1,8 @@
 # Sharing：AWS Lightsail 部署操作手册
 
-适用仓库：[TAO44123/Authright_Sharing](https://github.com/TAO44123/Authright_Sharing)。本文准备部署步骤及配置；不表示 AWS 环境已经上线。命令除特别说明外，均在 **Lightsail 的 Ubuntu SSH 终端**执行。
+适用仓库：[TAO44123/Authright_Sharing](https://github.com/TAO44123/Authright_Sharing)。本文包含部署步骤与 2026-09-29 的实际更新记录。命令除特别说明外，均在 **Lightsail 的 Ubuntu SSH 终端**执行。
+
+2026-09-29 部署记录：服务器从 GitHub 快进至 `cdca1f0`，构建并启用 `sharing:cdca1f0`，运行 `0003_lively_ikaris`，队列期限确认 1020 秒。迁移前的数据库备份保存在服务器 `/home/ubuntu/sharing-backups/sharing-pre-cdca1f0-20260929T003422Z.dump`，已通过 `pg_restore --list` 检查。Web、Worker、Caddy、PostgreSQL 运行正常，`https://sharing.authright.com/api/health` 返回数据库可达。一次性数据库中的 Andrew Ng 长视频验收在下载阶段失败：yt-dlp 返回 YouTube 的 `Sign in to confirm you’re not a bot`；Claude.ai 短视频及 Android 提取客户端也触发同样限制。未调用 Gemini，正式 1 条分享保持原状，验收用数据库已清理。当前生产音频摘要**尚未通过验收**；需解决服务器出口的 YouTube 下载权限后重新执行真实样本验证。
 
 最初的本地部署演练记录（2026-09-28，Docker Desktop/Linux ARM64）：Compose 配置解析、Docker 镜像构建、空库迁移、管理员初始化、Web 健康检查、OAuth discovery 运行时域名、Worker 暂停模式启动、Caddy 配置校验及 PostgreSQL 备份/新库恢复均通过。该次本地演练未验证 AWS 实例、公网证书、生产 Google 登录或真实供应商请求；它不替代后来独立的部署检查。构建时 Better Auth 会尝试访问占位数据库并输出连接拒绝日志，但构建退出码为 0，运行时连接真实测试库和 discovery 检查通过；后续可单独优化这一构建日志问题。
 
@@ -152,7 +154,7 @@ dc logs --tail=100 web worker caddy
 - 将用于远程测试的 plugin/MCP 配置 URL 改为 `https://sharing.example.com/mcp`，重新完成 OAuth，并实际执行 `list_shares`、`share_link`、`get_share`。当前仓库本地 plugin 配置仍指向 localhost；远程打包、分发属于下一步工作。
 - 在维护窗口执行主机重启，重新 SSH 后 `dc ps` 并再次检查 health、登录和 Worker 心跳；确认数据仍在。
 
-基础服务验收后，再在 `/etc/sharing/lightsail.env` 填入真实 Gemini、YouTube API key 和正确 `GEMINI_BILLING_TIER`，改 `CONTENT_PROCESSING_ENABLED=true`，执行 `dc up -d worker`。这会处理既有积压任务。分别提交一篇文章、一条 YouTube 链接验证结果；长视频还须验证 Gemini Files API 上传、模型引用和远端文件清理。Worker 使用音轨提取和 Gemini 两阶段摘要；部署前须执行新迁移及队列期限更新，重建含 yt-dlp/EJS/FFmpeg 的镜像，并确认临时工作目录有足够空间，见 [音轨处理](YOUTUBE_AUDIO_WORKER.md)。Claude.ai 短视频与 Andrew Ng 110 分钟视频已在本地 Worker 成功落库；Lightsail 上的音轨下载、Files API 和摘要仍须单独验收。当前音频版本尚未部署到 Lightsail，不能把本地迁移当作生产已更新。
+基础服务验收后，再在 `/etc/sharing/lightsail.env` 填入真实 Gemini、YouTube API key 和正确 `GEMINI_BILLING_TIER`，改 `CONTENT_PROCESSING_ENABLED=true`，执行 `dc up -d worker`。这会处理既有积压任务。分别提交一篇文章、一条 YouTube 链接验证结果；长视频还须验证 Gemini Files API 上传、模型引用和远端文件清理。Worker 使用音轨提取和 Gemini 两阶段摘要；部署前须执行新迁移及队列期限更新，重建含 yt-dlp/EJS/FFmpeg 的镜像，并确认临时工作目录有足够空间，见 [音轨处理](YOUTUBE_AUDIO_WORKER.md)。Claude.ai 短视频与 Andrew Ng 110 分钟视频已在本地 Worker 成功落库。2026-09-29 的 Lightsail 版本更新和数据库迁移均完成，但 YouTube 拦截服务器出口，音轨下载与 Gemini 摘要的生产验收仍待完成。
 
 ## 7. 后续更新和回滚
 

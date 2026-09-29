@@ -6,7 +6,7 @@
 
 日期：2026-09-28
 
-状态：A1–A5 及视频音频修订代码已交付；本地迁移、Worker 启动及短视频/110 分钟长视频音频摘要真实成功落库已完成；部署待完成
+状态：A1–A5 及视频音频修订代码已交付；本地短视频/110 分钟长视频摘要成功，Lightsail 代码和迁移已部署；生产音轨下载受 YouTube 人机验证阻挡
 
 关联：[PRD](./PRD.md) · [技术设计](./TECHNICAL_DESIGN.md) · [开发指南](./DEVELOPMENT.md)
 
@@ -149,7 +149,8 @@ A1 本地验收已完成：19 项单元测试、11 项集成测试、Web/Worker 
 - [x] 在 `.local/audio-tools` 安装主机音频依赖，配置 `.env` 路径并重启 Worker；已确认 worker_ready 和 heartbeat。
 - [x] Claude.ai 样本真实 Worker 成功落库：generation=3，attempts=1，2026-09-28 23:08 UTC 完成，保存概述及 4 个要点；不代表所有视频或生产环境均已验收。
 - [x] 长音轨走 Gemini Files API：128 MiB MP3 / 512 MiB 源音轨限制，上传状态轮询与远端文件清理；队列期限同步为 1020 秒。58 项单元测试和 15 项集成测试通过；Andrew Ng 110 分钟样本 generation=5 已在约 78 秒内成功落库。
-- [ ] 将音频版本及迁移部署到 Lightsail，并在服务器网络环境重新验证音轨下载和摘要。
+- [x] 从 GitHub 拉取并在 Lightsail 部署音频版本 `cdca1f0`，完成迁移、备份及 Web/Worker/数据库健康检查。
+- [ ] 生产音频摘要验收：服务器出口下载两条公开视频均触发 YouTube 人机验证，隔离长视频探测在调用 Gemini 前失败；需解决下载权限后复测。
 
 详细证据见 [音轨验证](./validation/YOUTUBE_AUDIO_GEMINI.md)，启动步骤见 [音轨 Worker](./YOUTUBE_AUDIO_WORKER.md)。
 

@@ -1,6 +1,6 @@
 # YouTube 音轨 → Gemini 验证
 
-日期：2026-09-28。先验证 Claude.ai 短视频，再按用户要求验证 Andrew Ng 的 110 分钟长视频。**本地 Worker 已分别在 23:08 UTC 和 23:23 UTC 完成两条视频的真实音频摘要并落库。**下方仍保留早期 Gemini 503、工具缺失和大小限制的失败记录，供排查过程参考；音频版本尚未部署到 Lightsail。
+日期：2026-09-28 至 29。先验证 Claude.ai 短视频，再按用户要求验证 Andrew Ng 的 110 分钟长视频。**本地 Worker 已分别在 23:08 UTC 和 23:23 UTC 完成两条视频的真实音频摘要并落库；Lightsail 已部署代码和迁移，但服务器出口触发 YouTube 人机验证，生产音频验收未通过。**下方保留早期 Gemini 503、工具缺失和大小限制的失败记录，供排查过程参考。
 
 23:23 UTC 的本地检查中 Worker 已运行：Claude.ai 分享为 `ready`，generation=3、attempts=1；Andrew Ng 分享也为 `ready`，generation=5、attempts=1。两者的任务均已 completed，各保存概述及 4 个要点。新版已去掉时间戳并使用视频专用提示词；下文时间戳越界、This article 措辞是旧探测的历史问题。
 
@@ -106,3 +106,9 @@ node --env-file=.env --import tsx scripts/validate-youtube-audio.mjs \
 脱敏数据库结果保存于 `test-results/long-video-result.json`。本地队列默认期限已查询确认为 1020 秒。58 项单元测试、15 项集成测试、lint、类型及客户端边界检查、Web/Worker 构建和客户端凭据扫描通过。没有重跑此前桌面/手机 E2E 或重建 Docker 镜像；未部署 Lightsail。成功说明该样本的完整技术链路通过，不代表人工逐段核验过全部音频事实，也不保证所有长视频均可处理。
 
 文件上传协议和清理依据：[Gemini Files API](https://ai.google.dev/gemini-api/docs/files)。
+
+## Lightsail 部署与生产验收（2026-09-29）
+
+服务器从 GitHub 拉取 `cdca1f0`，构建同名镜像；无网络容器中的 yt-dlp 版本检查、FFmpeg MP3 编码和 Worker 产物检查通过。迁移 `0003` 成功，pg-boss `process-content` 队列期限为 1020 秒；Web 和 Worker 均运行新镜像，公网健康检查返回 `{"status":"ok","database":"reachable"}`，Worker 日志出现 `worker_ready` 且内容消费启用。
+
+使用一次性容器和独立测试数据库对 Andrew Ng 样本执行真实处理，约 1.8 秒后在下载阶段返回 `AUDIO_DOWNLOAD_FAILED`，`httpStatuses=[]`、模型调用记录为空。直接运行 yt-dlp 显示 YouTube 要求 `Sign in to confirm you’re not a bot`；Claude.ai 短视频和 Android 提取客户端同样失败，指向服务器出口访问限制。测试基库及脚本创建的子库已删除；正式数据库仍有原来的 1 条 YouTube 分享，状态 ready，未改写其内容。**此为生产音频验收失败，不影响此前本地短视频和长视频成功记录。**
