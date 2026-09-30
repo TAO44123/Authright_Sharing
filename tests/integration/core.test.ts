@@ -327,111 +327,148 @@ describe("real OAuth and HTTP boundaries with test-only seeded identity", () => 
       ).status,
     ).toBe(403);
   });
-  it("registers the exact legacy Cursor callbacks while preserving redirect validation, PKCE and consent", async () => {
-    const callback = "cursor://anysphere.cursor-mcp/oauth/callback";
-    const metadata = {
-      client_name: "Cursor",
-      redirect_uris: [
-        callback,
+  it.each([
+    [
+      "legacy",
+      "cursor://anysphere.cursor-mcp/oauth/callback",
+      [
+        "cursor://anysphere.cursor-mcp/oauth/callback",
         "https://www.cursor.com/agents/mcp/oauth/callback",
         "http://localhost:8787/callback",
       ],
-      token_endpoint_auth_method: "none",
-      grant_types: ["authorization_code", "refresh_token"],
-      response_types: ["code"],
-      scope: "shares:read shares:write members:read offline_access",
-    };
-    const register = (overrides: Record<string, unknown> = {}) =>
-      auth.handler(
-        new Request(`${config.APP_URL}/api/auth/oauth2/register`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ ...metadata, ...overrides }),
-        }),
-      );
-    const registration = await register();
-    expect(registration.status, await registration.clone().text()).toBe(201);
-    const client = await registration.json();
-    expect(client.application_type).toBe("native");
-    expect(client.token_endpoint_auth_method).toBe("none");
-    expect(client.client_secret).toBeUndefined();
-    expect(client.redirect_uris).toEqual(metadata.redirect_uris);
-    for (const overrides of [
-      { application_type: "web" },
-      { token_endpoint_auth_method: "client_secret_basic" },
-      {
-        redirect_uris: [
-          ...metadata.redirect_uris,
-          "https://example.com/callback",
-        ],
-      },
-      {
-        redirect_uris: ["cursor://evil.example/oauth/callback"],
-        application_type: "native",
-      },
-      {
-        redirect_uris: [callback + "?next=https://evil.example"],
-        application_type: "native",
-      },
-      { redirect_uris: [callback + "#fragment"], application_type: "native" },
-      {
-        redirect_uris: ["cursor://user@anysphere.cursor-mcp/oauth/callback"],
-        application_type: "native",
-      },
-      { redirect_uris: ["javascript:alert(1)"], application_type: "native" },
-      {
-        redirect_uris: ["http://example.com/callback"],
-        application_type: "native",
-      },
-      { scope: "shares:read admin:all" },
-    ])
-      expect(
-        (await register(overrides)).status,
-        JSON.stringify(overrides),
-      ).toBe(400);
+    ],
+    [
+      "desktop loopback",
+      "http://localhost:8787/callback",
+      [
+        "https://www.cursor.com/agents/mcp/oauth/callback",
+        "http://localhost:8787/callback",
+      ],
+    ],
+    [
+      "IPv4 loopback",
+      "http://127.0.0.1:8787/callback",
+      [
+        "https://www.cursor.com/agents/mcp/oauth/callback",
+        "http://localhost:8787/callback",
+        "http://127.0.0.1:8787/callback",
+      ],
+    ],
+    [
+      "localhost only",
+      "http://localhost:8787/callback",
+      ["http://localhost:8787/callback"],
+    ],
+    [
+      "IPv4 only",
+      "http://127.0.0.1:8787/callback",
+      ["http://127.0.0.1:8787/callback"],
+    ],
+  ])(
+    "registers Cursor %s while preserving redirect validation, PKCE and consent",
+    async (_mode, callback, redirectUris) => {
+      const metadata = {
+        client_name: "Cursor",
+        redirect_uris: redirectUris,
+        token_endpoint_auth_method: "none",
+        grant_types: ["authorization_code", "refresh_token"],
+        response_types: ["code"],
+        scope: "shares:read shares:write members:read offline_access",
+      };
+      const register = (overrides: Record<string, unknown> = {}) =>
+        auth.handler(
+          new Request(`${config.APP_URL}/api/auth/oauth2/register`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ ...metadata, ...overrides }),
+          }),
+        );
+      const registration = await register();
+      expect(registration.status, await registration.clone().text()).toBe(201);
+      const client = await registration.json();
+      expect(client.application_type).toBe("native");
+      expect(client.token_endpoint_auth_method).toBe("none");
+      expect(client.client_secret).toBeUndefined();
+      expect(client.redirect_uris).toEqual(metadata.redirect_uris);
+      for (const overrides of [
+        { application_type: "web" },
+        { token_endpoint_auth_method: "client_secret_basic" },
+        {
+          redirect_uris: [
+            ...metadata.redirect_uris,
+            "https://example.com/callback",
+          ],
+        },
+        {
+          redirect_uris: ["cursor://evil.example/oauth/callback"],
+          application_type: "native",
+        },
+        {
+          redirect_uris: [callback + "?next=https://evil.example"],
+        },
+        { redirect_uris: ["http://localhost:8788/callback"] },
+        { redirect_uris: ["http://127.0.0.1:8787/other"] },
+        { redirect_uris: [callback + "#fragment"], application_type: "native" },
+        {
+          redirect_uris: ["cursor://user@anysphere.cursor-mcp/oauth/callback"],
+          application_type: "native",
+        },
+        { redirect_uris: ["javascript:alert(1)"], application_type: "native" },
+        {
+          redirect_uris: ["http://example.com/callback"],
+          application_type: "native",
+        },
+        { scope: "shares:read admin:all" },
+      ])
+        expect(
+          (await register(overrides)).status,
+          JSON.stringify(overrides),
+        ).toBe(400);
 
-    const query = new URLSearchParams({
-      client_id: client.client_id,
-      redirect_uri: callback,
-      response_type: "code",
-      scope: "shares:read",
-      state: randomUUID(),
-      resource: config.MCP_RESOURCE_URL,
-    });
-    const authorizeRequest = () =>
-      auth.handler(
-        new Request(`${config.APP_URL}/api/auth/oauth2/authorize?${query}`, {
-          headers: { cookie },
-        }),
+      const query = new URLSearchParams({
+        client_id: client.client_id,
+        redirect_uri: callback,
+        response_type: "code",
+        scope: "shares:read",
+        state: randomUUID(),
+        resource: config.MCP_RESOURCE_URL,
+      });
+      const authorizeRequest = () =>
+        auth.handler(
+          new Request(`${config.APP_URL}/api/auth/oauth2/authorize?${query}`, {
+            headers: { cookie },
+          }),
+        );
+      const noPkce = await authorizeRequest();
+      const noPkceLocation = noPkce.headers.get("location");
+      expect(noPkceLocation).toBeTruthy();
+      expect(new URL(noPkceLocation!).searchParams.get("error")).toBe(
+        "invalid_request",
       );
-    const noPkce = await authorizeRequest();
-    const noPkceLocation = noPkce.headers.get("location");
-    expect(noPkceLocation).toBeTruthy();
-    expect(new URL(noPkceLocation!).searchParams.get("error")).toBe(
-      "invalid_request",
-    );
-    expect(new URL(noPkceLocation!).searchParams.has("code")).toBe(false);
-    query.set(
-      "code_challenge",
-      createHash("sha256")
-        .update(randomUUID() + randomUUID())
-        .digest("base64url"),
-    );
-    query.set("code_challenge_method", "S256");
-    const consent = await authorizeRequest();
-    expect(consent.status).toBe(302);
-    expect(
-      new URL(consent.headers.get("location")!, config.APP_URL).pathname,
-    ).toBe("/consent");
-    query.set("redirect_uri", "cursor://evil.example/oauth/callback");
-    const wrongRedirect = await authorizeRequest();
-    expect(wrongRedirect.headers.get("location") ?? "").not.toContain(
-      "cursor://evil.example",
-    );
-    expect(
-      new URL(wrongRedirect.headers.get("location")!, config.APP_URL).pathname,
-    ).toBe("/auth-error");
-  });
+      expect(new URL(noPkceLocation!).searchParams.has("code")).toBe(false);
+      query.set(
+        "code_challenge",
+        createHash("sha256")
+          .update(randomUUID() + randomUUID())
+          .digest("base64url"),
+      );
+      query.set("code_challenge_method", "S256");
+      const consent = await authorizeRequest();
+      expect(consent.status).toBe(302);
+      expect(
+        new URL(consent.headers.get("location")!, config.APP_URL).pathname,
+      ).toBe("/consent");
+      query.set("redirect_uri", "cursor://evil.example/oauth/callback");
+      const wrongRedirect = await authorizeRequest();
+      expect(wrongRedirect.headers.get("location") ?? "").not.toContain(
+        "cursor://evil.example",
+      );
+      expect(
+        new URL(wrongRedirect.headers.get("location")!, config.APP_URL)
+          .pathname,
+      ).toBe("/auth-error");
+    },
+  );
   it("uses discovery, DCR, PKCE and consent to query a web-created record over MCP; revoked JWTs fail immediately", async () => {
     const { POST } = await import("../../src/app/api/shares/route.ts");
     const web = await POST(
