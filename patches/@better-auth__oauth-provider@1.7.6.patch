@@ -1,0 +1,30 @@
+diff --git a/dist/authorize-CLuqtSXQ.mjs b/dist/authorize-CLuqtSXQ.mjs
+index 52dbf4ee9e5fd9ef25f9eaf5deea8ff2cc584c63..a3d41a904fc502e0dd32800812def47dfa536201 100644
+--- a/dist/authorize-CLuqtSXQ.mjs
++++ b/dist/authorize-CLuqtSXQ.mjs
+@@ -1627,7 +1627,16 @@ function resolveRegistrationResponseTypes(client, grantTypes) {
+ 	if (client.response_types) return client.response_types;
+ 	return grantTypes.includes("authorization_code") ? ["code"] : void 0;
+ }
++// Sharing compatibility: Cursor 3.21 registers these exact desktop/web callbacks
++// without application_type. This is public-client metadata, never proof of identity.
++const SHARING_CURSOR_CALLBACK = "cursor://anysphere.cursor-mcp/oauth/callback";
++const SHARING_CURSOR_REDIRECTS = new Set([
++	SHARING_CURSOR_CALLBACK,
++	"https://www.cursor.com/agents/mcp/oauth/callback",
++	"http://localhost:8787/callback"
++]);
+ function applyOAuthClientRegistrationDefaults(client, defaultApplicationType = "web") {
++	if (defaultApplicationType === "web" && client.application_type === void 0 && client.token_endpoint_auth_method === "none" && client.redirect_uris?.includes(SHARING_CURSOR_CALLBACK) && client.redirect_uris.every((uri) => SHARING_CURSOR_REDIRECTS.has(uri))) defaultApplicationType = "native";
+ 	const grantTypes = resolveRegistrationGrantTypes(client);
+ 	return {
+ 		...client,
+@@ -1708,6 +1717,8 @@ function validateClientRedirectUri(redirectUri, applicationType) {
+ 		if (!isAllowedNativeHttpLoopback) invalidRedirectUri(`native clients may use http only on the exact loopback hosts localhost, 127.0.0.1, or [::1]: ${redirectUri}`);
+ 		return;
+ 	}
++	// Legacy Cursor callback only: no arbitrary cursor:// hosts, paths, queries or fragments.
++	if (applicationType === "native" && redirectUri === SHARING_CURSOR_CALLBACK) return;
+ 	if (FORBIDDEN_NATIVE_REDIRECT_SCHEMES.has(url.protocol) || !isReverseDomainPrivateUseRedirectUri(url)) invalidRedirectUri(`native private-use redirect URI schemes must be well-formed reverse-domain names, omit the naming authority, and must not use a reserved scheme: ${redirectUri}`);
+ }
+ function assertValidRegistrationJwks(jwks) {
