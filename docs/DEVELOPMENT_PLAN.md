@@ -1,12 +1,14 @@
 # Sharing — 开发计划与 Plugin 私有分发方案
 
+> 2026-10-01 更新：三端 Plugin `0.4.0` 已分发；Cursor OAuth 回调兼容修复已部署至 Web `sharing:5b97020`，Worker 保持 `sharing:6581554`。Codex 桌面生产 `list_shares` 查询成功，Claude 用户反馈正常；Cursor 实际登录与工具调用仍待确认。
+
 > 2026-09-29 更新：YouTube Worker 改为直接 URL、Gemini 非流式一次调用，长视频降低画面采样；新迁移记录缓存用量，旧音频摘要和历史计量保留。当前实现及验收边界见 [视频 Worker](./YOUTUBE_AUDIO_WORKER.md)。
 
-版本：v0.6
+版本：v0.7
 
-日期：2026-09-29（UTC）
+日期：2026-10-01（America/New_York）
 
-状态：A1–A5 与 URL 非流式视频修订已实现；实现基线 `f9cd079` 已推送 GitHub main，生产已升级 `sharing:6581554`、应用 `0004` 并通过服务器短/长视频队列验收
+状态：A1–A5、URL 视频 Worker 与三端 Plugin 已实现。生产 Web `sharing:5b97020`、Worker `sharing:6581554`；`0004` 已应用，服务器短/长视频队列验收通过。Cursor 浏览器登录、三端完整验收及团队分发权限仍待确认。
 
 关联：[PRD](./PRD.md) · [技术设计](./TECHNICAL_DESIGN.md) · [开发指南](./DEVELOPMENT.md)
 
@@ -195,7 +197,7 @@ A1 本地验收已完成：19 项单元测试、11 项集成测试、Web/Worker 
 
 Agent 主线负责连接、协议适配、使用说明和分发。远程 MCP 与 OAuth 代码仍部署在平台 Web 进程，私有仓库只分发客户端 Plugin 文件。
 
-当前实施范围按用户决定先限于本机 Codex：已接入五个 MCP 工具、授权 scope、共享使用说明和 Codex 本地插件；安装版 Codex 已完成三个只读工具的真实调用，桌面新聊天的查询结果经用户反馈与服务端一致。写入和撤回通过隔离库中的 MCP SDK 验证，尚未在 Codex 桌面逐项调用。Claude Code/Cursor、HTTPS、私有来源安装及更新/回退保持后续任务，不因本机插件可用而视为 B4/B5 全部完成。结果与证据见 [B 阶段本机 Codex 验证](./validation/B_CODEX_LOCAL.md)。
+当前已扩展到 Codex、Claude Code 和 Cursor：三端共用六个 Skill、五个 MCP 工具与生产 HTTPS，Plugin `0.4.0` 已推送独立分发仓库。Codex 本聊天已完成生产 `list_shares` 查询；Claude Git 来源安装通过，用户反馈使用正常；Cursor 文件安装通过，回调兼容修复已部署，真实浏览器登录与工具调用仍待确认。写入、刷新、撤权、三端更新/回退和普通成员安装保留逐项验收。结果见 [Codex](./validation/B_CODEX_LOCAL.md)、[Claude](./validation/B_CLAUDE_PLUGIN.md)、[Cursor](./validation/B_CURSOR_PLUGIN.md)。
 
 | 任务 | 主要依赖 | 可交付结果 |
 | --- | --- | --- |
@@ -241,11 +243,15 @@ Agent 主线负责连接、协议适配、使用说明和分发。远程 MCP 与
 
 - [ ] 在应用仓库建立共享 Skill 源文件及三客户端配置/manifest 适配。
 - [ ] 按各客户端实测支持的格式生成 Plugin 与 marketplace 元数据，避免手工维护三份业务说明。
-- [ ] 建立只导出 Plugin 文件的发布脚本和私有分发仓库结构，记录版本、提交与兼容范围。
+- [x] 建立只导出 Plugin 文件的发布脚本和分发仓库结构，记录版本、提交与兼容范围；团队读取权限单独验收。
 - [ ] 准备安装、Google 授权、更新、回退和卸载说明；在 `/account` 提供三个客户端入口。
 - [ ] 使用非开发者的干净环境验证仓库访问、下载、安装和更新。
 
-本机 Codex 子范围已完成：`plugins/sharing/` 含 manifest、MCP 配置和共享 Skill；`.agents/plugins/marketplace.json` 可被已安装 Codex CLI 注册并安装，桌面新聊天可查询分享。当前配置指向 `localhost:3000`，只用于本机；导出脚本、生产地址、私有仓库和安装更新/回退说明仍未完成。
+本机 Codex 子范围已完成：`plugins/sharing/` 含 manifest、MCP 配置和共享 Skill；`.agents/plugins/marketplace.json` 可被已安装 Codex CLI 注册并安装，桌面新聊天可查询分享。2026-09-30：Plugin 源版本更新为 `0.2.0`，默认连接 `https://sharing.authright.com/mcp`；安装和重新授权说明见 [远程 Plugin](./PLUGIN_REMOTE.md)。生产 health、OAuth discovery 和未登录 MCP 401 已复查；当时已安装副本的更新、生产客户端 OAuth/工具调用、导出脚本与私有仓库分发尚待验证/完成；后续进展见下段。
+
+2026-09-30 Claude Code 适配：双端 Plugin 源升级为 `0.3.0`；增加 `.claude-plugin/marketplace.json` 和插件声明，共用六个 Skill 与生产 MCP。`scripts/export-plugin.mjs` 已实现 14 文件白名单导出及一致性检查。本机 Claude Code `2.1.274` 严格校验、本地目录安装、GitHub 干净安装和组件清单已通过（发布提交 `5ecbb14`）；生产 OAuth、五工具真实调用和更新/回退仍独立待验收，详见 [Claude Plugin 验收](validation/B_CLAUDE_PLUGIN.md)。
+
+2026-09-30 Cursor 适配：三端 Plugin 源版本统一为 `0.4.0`，新增 Cursor manifest/marketplace 和本地安装更新脚本；导出白名单为 17 个文件。本机 Cursor `3.21.18` 的安装文件已就位，六项安装器测试及全部 73 项单元测试通过。真实界面加载、生产 OAuth 和业务调用、团队目录/策略仍分别待验收，详见 [Cursor Plugin 验收](validation/B_CURSOR_PLUGIN.md)。用户反馈 Claude 测试正常，已补记到 Claude 验收记录。随后 `36f0b70` / `5b97020` 的服务端补丁完成旧协议与 localhost/IPv4 注册兼容；7 项 OAuth 集成测试通过，生产 Web 已部署 `sharing:5b97020`，真实 Cursor 登录仍待确认。Codex 桌面生产七天分享查询返回 5 条且无下一页，已补记到 Codex 验收。
 
 验收：插件能从私有来源取得并安装；生产包连接生产 MCP；不含数据库内容、服务端源码、个人凭据或开发机器绝对路径。受策略限制的客户端必须明确记为待解决，不以“服务端可调用”代替安装验收。
 
@@ -281,7 +287,7 @@ Agent 主线负责连接、协议适配、使用说明和分发。远程 MCP 与
 - [ ] 使用普通测试成员从发布源全新安装，完成个人 OAuth 和一次跨入口查询。
 - [ ] 发布内部安装说明和版本说明，链接到对应服务地址与私有仓库。
 
-当前服务器进度：Lightsail 的 `sharing.authright.com` 已运行同版本 Web/Worker `sharing:6581554`，数据库迁移、HTTPS health、discovery、Worker 心跳及真实视频队列验收通过；迁移前备份已校验并离机保存。上述综合条目仍保留未完成状态：自动备份、生产恢复演练、远程客户端安装授权及私有分发尚未补齐。
+当前服务器进度：Lightsail 的 `sharing.authright.com` Web 已更新为 `sharing:5b97020`（Cursor OAuth 修复），Worker 保持 `sharing:6581554`，此次无额外迁移；数据库迁移、HTTPS health、discovery、Worker 心跳及真实视频队列验收通过；迁移前备份已校验并离机保存。上述综合条目仍保留未完成状态：自动备份、生产恢复演练、三端完整客户端授权、团队权限与不可变发布标签尚未补齐。
 
 退出条件：可安装产物与已部署服务兼容；成员不需要取得应用后端仓库或任何服务端密钥。私有仓库发布和测试成员安装是后续交付任务，不因服务部署完成而视为通过。
 
@@ -311,30 +317,36 @@ Agent 主线负责连接、协议适配、使用说明和分发。远程 MCP 与
 初始采用两个仓库职责，但只有一个开发源：
 
 - **应用仓库**：现有 Sharing 项目；同时维护平台、MCP 和 `plugins/` 源文件。
-- **私有分发仓库**：建议名称 `sharing-plugins`，具体组织和 URL 待配置；只接收白名单导出的 Plugin、安装说明、图标和目录索引，不复制应用仓库历史。
+- **独立 Plugin 分发仓库**：[TAO44123/Authright_Sharing_Plugin](https://github.com/TAO44123/Authright_Sharing_Plugin)，2026-09-30 首次上传 Codex `0.2.0`（`46c45fa`），随后发布 Claude `0.3.0`（`5ecbb14`）与三端 `0.4.0`（`f66331d`），marketplace 为 `authright-sharing`；仅包含 Plugin、Skill、安装说明和目录索引，不复制应用仓库历史。仓库可见性/团队读取权限、干净环境安装和更新/回退仍待验收。
 
-以下为逻辑结构，具体 manifest 路径由客户端格式决定：
+当前 Codex / Claude Code / Cursor 共用同一 Plugin 目录，客户端入口分别适配：
 
 ```text
 应用仓库
-  plugins/
-    shared/                 # 共享 Skill、示例和元数据源
-    claude-code/            # 客户端适配源
-    codex/
-    cursor/
-  scripts/
-    release-plugins.*       # 校验、构建、导出；待实现
+  .claude-plugin/marketplace.json  # Claude 目录源，同时用于导出
+  .cursor-plugin/marketplace.json  # Cursor 团队目录入口
+  .agents/plugins/marketplace.json # 保留 sharing-local 开发身份
+  plugins/sharing/
+    .codex-plugin/plugin.json
+    .claude-plugin/plugin.json
+    .cursor-plugin/plugin.json
+    .mcp.json                     # 生产 HTTPS
+    skills/                       # 六个共享 Skill
+  plugins/distribution/           # README、CHANGELOG、Codex 发布目录模板
+  scripts/export-plugin.mjs       # 白名单导出，--check 验证产物一致性
+  scripts/install-cursor-plugin.mjs # 本地安装、更新备份、恢复、卸载
 
-私有分发仓库 sharing-plugins
-  README.md                 # 选客户端、安装、Google 授权
+独立分发仓库 Authright_Sharing_Plugin
+  README.md
   CHANGELOG.md
-  compatibility.json        # Plugin 与服务/客户端兼容范围
-  plugins/
-    claude-code/
-    codex/
-    cursor/
-  <各客户端要求位置的 marketplace 元数据>
+  .agents/plugins/marketplace.json # authright-sharing
+  .claude-plugin/marketplace.json  # authright-sharing
+  .cursor-plugin/marketplace.json  # authright-sharing
+  scripts/install-cursor-plugin.mjs
+  plugins/sharing/                # 与应用仓库插件源一致
 ```
+
+导出：`pnpm plugin:export /absolute/path/to/Authright_Sharing_Plugin`；校验：追加 `--check`。不复制服务端源码、环境文件和应用 Git 历史。Cursor 包装与安装脚本已实现，三客户端完整运行时和团队分发验收仍待完成。
 
 每个 Plugin 产物包括名称、说明、版本、图标、远程 MCP 配置、共享 Skill 和必要的客户端元数据。使用清单允许的公开配置值，例如 MCP URL；不包含个人 Token、Google client secret、模型 Key 或数据库凭据。
 

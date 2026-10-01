@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Sharing 项目配置指南：Google OAuth、Gemini、YouTube、数据库、MCP 与 AWS Lightsail。">
+  <title>Sharing · 项目配置指南</title>
+  <style>
+    :root{--paper:#f6f5ef;--card:#fff;--ink:#172c30;--muted:#5c6c70;--line:#dce3df;--teal:#126b62;--light:#eaf4ee;--amber:#fff3d7;--code:#152d32}
+    *{box-sizing:border-box}html{scroll-behavior:auto;scroll-padding-top:28px}body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.85 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}a{color:var(--teal);text-underline-offset:4px}a:hover{color:#06483f}a:focus-visible,button:focus-visible{outline:3px solid #dcab45;outline-offset:4px}p{margin:12px 0}h1,h2,h3{line-height:1.35}h1{font-size:clamp(32px,4.8vw,53px);letter-spacing:-1.5px;margin:16px 0}h2{font-size:27px;margin:8px 0 18px}h3{font-size:19px;margin:24px 0 9px}ul,ol{padding-left:24px}li{margin:8px 0}code{font:0.88em/1.6 ui-monospace,SFMono-Regular,Consolas,monospace;overflow-wrap:anywhere;background:#edf1ee;padding:2px 5px;border-radius:4px}pre{margin:16px 0;background:var(--code);color:#e4f0e8;border-radius:12px;padding:22px;overflow-x:auto;font-size:13px;line-height:1.8}pre code{background:none;padding:0;color:inherit;white-space:pre;overflow-wrap:normal;font-size:inherit}.shell{display:grid;grid-template-columns:230px minmax(0,920px);gap:48px;max-width:1280px;padding:38px 38px 72px;margin:auto}.sidebar{position:sticky;top:30px;align-self:start}.brand{font-size:23px;letter-spacing:-.6px;font-weight:800}.brand span{color:var(--teal)}.side-caption{color:var(--muted);font-size:12px;letter-spacing:2px;margin:4px 0 30px}.sidebar nav a{display:block;text-decoration:none;padding:9px 12px;border-radius:7px;font-size:14px;color:var(--muted)}.sidebar nav a:hover{background:#e6eee8;color:var(--teal)}.side-note{border-top:1px solid var(--line);margin-top:26px;padding-top:20px;font-size:12px;color:var(--muted)}.hero{padding:34px 40px;background:var(--ink);color:#fff;border-radius:20px;position:relative}.hero p{color:#c7d9d3;max-width:690px}.eyebrow{font-size:12px;letter-spacing:2px;font-weight:700;color:#8bb7a8}.hero .meta{display:flex;gap:12px;flex-wrap:wrap;margin-top:25px;font-size:12px;color:#bacec5}.meta span{border:1px solid #476065;padding:4px 11px;border-radius:30px}.print{margin-top:20px;background:#dcebdd;color:var(--ink);border:0;border-radius:7px;padding:10px 15px;font:inherit;font-size:13px;cursor:pointer}.intro{margin:24px 0}.section{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:32px 36px;margin:22px 0;scroll-margin-top:20px}.number{font-size:12px;color:var(--teal);font-weight:800;letter-spacing:2px}.lede{color:var(--muted)}.callout{background:var(--light);border-left:3px solid var(--teal);padding:14px 18px;margin:20px 0;border-radius:0 8px 8px 0;font-size:14px}.callout.warn{background:var(--amber);border-color:#c98f22}.label{display:inline-block;color:var(--teal);background:var(--light);font-size:12px;font-weight:700;padding:3px 9px;border-radius:6px}.table-wrap{overflow-x:auto;margin:18px 0}table{width:100%;border-collapse:collapse;font-size:14px}th{text-align:left;background:#f0f4f0;color:#526461;font-weight:600}th,td{padding:12px 13px;border-bottom:1px solid var(--line);vertical-align:top}td:first-child{font-weight:600}tbody tr:last-child td{border-bottom:0}.flow{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:20px 0}.flow-card{border:1px solid var(--line);padding:16px;border-radius:10px;font-size:14px}.flow-card strong{display:block;margin-bottom:6px}.flow-card span{color:var(--muted)}.source{font-size:12px;color:var(--muted);margin-top:24px;border-top:1px dashed var(--line);padding-top:14px}.source a{margin-right:12px}.file{font-size:13px;color:var(--muted)}details{border-top:1px solid var(--line);padding:15px 0}summary{font-weight:650;cursor:pointer}details p{font-size:14px;color:var(--muted)}footer{font-size:13px;color:var(--muted);padding:10px 8px}.skip{position:absolute;left:12px;top:-70px;background:white;padding:10px;z-index:10}.skip:focus{top:10px}
+    @media(max-width:1000px){.shell{grid-template-columns:180px minmax(0,1fr);gap:25px;padding:25px}.section{padding:27px}.hero{padding:30px}}@media(max-width:720px){.shell{display:block;padding:18px}.sidebar{position:static;margin-bottom:22px}.side-caption{margin-bottom:12px}.sidebar nav{display:flex;overflow-x:auto;gap:3px;padding-bottom:8px}.sidebar nav a{white-space:nowrap;font-size:13px;padding:7px 10px}.side-note{display:none}.hero{padding:26px}.section{padding:22px 18px}.flow{grid-template-columns:1fr}h2{font-size:23px}body{font-size:15px}pre{padding:16px}th,td{padding:10px;min-width:120px}}@media print{@page{size:A4;margin:17mm}body{background:#fff;font-size:10pt;line-height:1.65}.shell{display:block;padding:0;max-width:none}.sidebar,.print,.skip{display:none}.hero{background:#fff;color:var(--ink);padding:0 0 22px;border-bottom:2px solid var(--ink);border-radius:0}.hero p,.hero .meta,.eyebrow{color:var(--muted)}h1{font-size:30pt}h2{font-size:19pt}.section{border:0;border-radius:0;padding:18px 0;margin:12px 0;border-bottom:1px solid var(--line)}h2,h3,summary{break-after:avoid}tr,.flow-card,.callout{break-inside:avoid}pre{background:#f0f2ef;color:var(--ink);white-space:pre-wrap;overflow:visible;font-size:8pt;padding:12px}pre code{white-space:pre-wrap;overflow-wrap:anywhere}.table-wrap{overflow:visible}table{font-size:9pt}a{color:var(--ink)}details p{display:block}.meta span{border-color:var(--line)}}
+  </style>
+</head>
+<body>
+<a class="skip" href="#main">跳转到正文</a>
+<div class="shell">
+  <aside class="sidebar" aria-label="文档目录">
+    <div class="brand">Sharing<span>.</span></div>
+    <div class="side-caption">配置与平台指南</div>
+    <nav>
+      <a href="#overview">01 配置总览</a><a href="#locations">02 配置存放位置</a><a href="#google">03 Google OAuth</a><a href="#gemini">04 Gemini API</a><a href="#youtube">05 YouTube API</a><a href="#database">06 数据库与管理员</a><a href="#mcp">07 MCP 客户端授权</a><a href="#deploy">08 域名与生产部署</a><a href="#reference">09 环境变量速查</a><a href="#troubleshooting">10 验证与排查</a>
+    </nav>
+    <div class="side-note">更新日期：2026-10-01<br>依据当前仓库与官方文档<br>独立 HTML · 离线可阅读<br>平台链接需要联网</div>
+  </aside>
+  <main id="main">
+    <header class="hero">
+      <div class="eyebrow">SHARING / CONFIGURATION HANDBOOK</div>
+      <h1>项目配置指南</h1>
+      <p>把平台入口、配置步骤、环境变量和代码位置放在一起。用于首次搭建、日常维护，以及交接 Sharing 的登录、内容处理和部署配置。</p>
+      <div class="meta"><span>Google OAuth</span><span>Gemini &amp; YouTube API</span><span>PostgreSQL &amp; MCP</span><span>AWS Lightsail</span></div>
+      <button class="print" type="button" onclick="window.print()">打印 / 保存为 PDF</button>
+    </header>
+    <p class="intro lede">本文示例使用本地地址 <code>http://localhost:3000</code> 和正式域名 <code>sharing.authright.com</code>。密钥均用占位符表示。代码事实来自当前工作区；生产状态依据仓库截至 2026-09-30 的部署记录（Web 5b97020、Worker 6581554），本文编写时未登录各平台核对实际后台配置。</p>
+
+    <section id="overview" class="section">
+      <div class="number">01 / OVERVIEW</div><h2>先看清每项配置负责什么</h2>
+      <div class="table-wrap"><table><thead><tr><th>能力</th><th>配置平台</th><th>项目接入方式</th></tr></thead><tbody>
+        <tr><td>Google 网页登录</td><td>Google Cloud → Google Auth Platform</td><td>OAuth Web application 的 Client ID / Secret</td></tr>
+        <tr><td>文章与视频摘要</td><td>Google AI Studio；Google Cloud 管计费与权限</td><td><code>GEMINI_API_KEY</code>，由 Worker 调用 Gemini Developer API</td></tr>
+        <tr><td>YouTube 元数据</td><td>Google Cloud → APIs &amp; Services</td><td><code>YOUTUBE_API_KEY</code>，读取标题、Description、时长等</td></tr>
+        <tr><td>Agent / MCP 授权</td><td>Sharing 自己的授权页；客户端 MCP 设置</td><td>Better Auth MCP/OAuth，授权码 + PKCE</td></tr>
+        <tr><td>数据与任务队列</td><td>本地 Docker；生产 Lightsail Docker Compose</td><td>PostgreSQL + Drizzle 迁移 + pg-boss 队列</td></tr>
+        <tr><td>公网域名与 HTTPS</td><td>AWS Lightsail + 域名 DNS 管理平台</td><td>Static IP、DNS A 记录、Caddy 自动证书</td></tr>
+        <tr><td>服务器拉取代码</td><td>GitHub → 仓库 Settings → Deploy keys</td><td>服务器保存 SSH 私钥，GitHub 登记只读公钥</td></tr>
+      </tbody></table></div>
+      <div class="flow"><div class="flow-card"><strong>① 网页登录</strong><span>Google 验证身份 → Sharing 检查公司邮箱 → 建立网页会话。</span></div><div class="flow-card"><strong>② 内容处理</strong><span>网页提交链接 → PostgreSQL 排队 → Worker 调用外部 API → 写回摘要。</span></div><div class="flow-card"><strong>③ 客户端授权</strong><span>客户端访问 MCP → 用户登录并同意 → Sharing 签发访问凭据。</span></div></div>
+      <div class="callout">Google 登录、Gemini API Key、YouTube API Key 和 Sharing MCP 访问令牌是不同用途的凭据。客户端使用 Sharing 签发的令牌；Gemini 与 YouTube 调用使用服务器上的 API Key。</div>
+    </section>
+
+    <section id="locations" class="section">
+      <div class="number">02 / LOCATIONS</div><h2>配置到底存在哪里</h2>
+      <div class="table-wrap"><table><thead><tr><th>位置</th><th>作用</th><th>修改后如何生效</th></tr></thead><tbody>
+        <tr><td>项目根目录 <code>.env</code></td><td>本地真实配置；Next.js Web 自动读取，Worker / 脚本通过命令的 <code>--env-file=.env</code> 读取。</td><td>重新启动受影响的 Web 或 Worker。</td></tr>
+        <tr><td><code>.env.example</code></td><td>本地模板，允许提交 Git；只放示例和空密钥。</td><td>修改模板不会改变正在运行的服务。</td></tr>
+        <tr><td>服务器 <code>/etc/sharing/lightsail.env</code></td><td>生产真实配置，由 Compose 的 <code>--env-file</code> 载入；位于仓库外。</td><td>运行对应服务的 <code>dc up -d --wait</code>，按变化重建容器。</td></tr>
+        <tr><td><code>deploy/lightsail/.env.example</code></td><td>生产模板，包含域名、镜像标签、数据库密码和各 API 凭据。</td><td>仅首次创建配置时复制；后续直接编辑真实文件。</td></tr>
+        <tr><td><code>src/server/env.ts</code></td><td>校验格式、默认值、地址一致性与必填项。</td><td>修改代码后，生产需要构建并部署新镜像。</td></tr>
+        <tr><td><code>src/server/auth-options.ts</code></td><td>Google 登录、公司身份限制、MCP OAuth 插件配置。</td><td>修改代码后重启本地 Web；生产重新构建部署。</td></tr>
+        <tr><td>Google / AWS / GitHub 后台</td><td>OAuth 回调、API 启用、计费、权限、DNS 和 Deploy key 等平台侧设置。</td><td>平台保存后生效或等待传播；本地仍需填入匹配的配置。</td></tr>
+      </tbody></table></div>
+      <p>Web 的环境变量加载优先级：进程环境 → <code>.env.$NODE_ENV.local</code> → <code>.env.local</code>（测试除外）→ <code>.env.$NODE_ENV</code> → <code>.env</code>。项目的 Worker 命令只显式加载根目录 <code>.env</code>，不会自动采用 Next.js 的整套加载优先级。</p>
+      <div class="callout warn">配置密钥时保持服务端变量名，不添加 <code>NEXT_PUBLIC_</code> 前缀。不要把真实 <code>.env</code>、API Key、数据库备份或完整 Compose 配置输出放进 Git、HTML 文档或 Plugin 分发包。</div>
+      <p class="file">项目配置读取入口：<code>src/server/config.ts</code>（Web）与 <code>src/server/worker-config.ts</code>（Worker）。</p>
+    </section>
+
+    <section id="google" class="section">
+      <div class="number">03 / GOOGLE OAUTH</div><h2>配置 Google 登录</h2>
+      <p class="lede">目标：让已验证的公司 Google 账号登录 Sharing。项目当前公司邮箱域名为 <code>authright.com</code>。</p>
+      <p><span class="label">平台入口</span> <a href="https://console.cloud.google.com/auth/clients">Google Auth Platform → Clients</a> · <a href="https://console.cloud.google.com/auth/branding">Branding</a> · <a href="https://console.cloud.google.com/auth/audience">Audience</a> · <a href="https://console.cloud.google.com/auth/scopes">Data Access</a></p>
+      <ol>
+        <li><strong>选择正确的 Google Cloud 项目。</strong>已有配置时，在 Clients 中查找与本地 <code>GOOGLE_CLIENT_ID</code> 相同的客户端。仓库没有记录实际 Cloud 项目名称、项目 ID 或 OAuth 客户端名称，需要在后台确认。</li>
+        <li><strong>填写 Branding。</strong>设置应用名称（例如 Sharing）、支持邮箱、联系信息；按实际应用补充主页、隐私政策和相关域名。</li>
+        <li><strong>设置 Audience。</strong>项目方案使用 <code>Internal</code>，供所属 Google Workspace / Cloud Identity 组织使用。Internal 需要组织条件支持；若后台只有 External，先核对项目所属组织。External 的测试用户在 Audience 中管理。</li>
+        <li><strong>创建或编辑 Web application 客户端。</strong>在 Clients 选择 <code>Web application</code>，按下面表格填写 origin 和回调。</li>
+        <li><strong>保存 Client ID / Secret。</strong>写入本地 <code>.env</code> 或生产 <code>/etc/sharing/lightsail.env</code>。新建 Secret 时及时保存；以后台当前可用的密钥管理方式为准。</li>
+        <li><strong>确认权限。</strong>网页登录只需 <code>openid email profile</code> 基本身份权限，Data Access 中核对这些范围。</li>
+      </ol>
+      <div class="table-wrap"><table><thead><tr><th>设置</th><th>本地开发</th><th>生产环境</th></tr></thead><tbody>
+        <tr><td>JavaScript origin</td><td><code>http://localhost:3000</code></td><td><code>https://sharing.authright.com</code></td></tr>
+        <tr><td>Redirect URI</td><td><code>http://localhost:3000/api/auth/callback/google</code></td><td><code>https://sharing.authright.com/api/auth/callback/google</code></td></tr>
+        <tr><td>应用基准地址</td><td><code>APP_URL=http://localhost:3000</code></td><td>Compose 根据 <code>SHARING_DOMAIN=sharing.authright.com</code> 生成 HTTPS 地址。</td></tr>
+      </tbody></table></div>
+      <p>上表 origin 遵循仓库配置手册；本项目核心为服务端 OAuth 回调，<strong>Redirect URI 必须与实际请求逐字匹配</strong>。本地用 <code>localhost</code> 登录，避免与 <code>127.0.0.1</code> 混用。开发与生产宜采用独立凭据。</p>
+      <pre><code>GOOGLE_CLIENT_ID=YOUR_GOOGLE_OAUTH_CLIENT_ID
+GOOGLE_CLIENT_SECRET=YOUR_GOOGLE_OAUTH_CLIENT_SECRET
+GOOGLE_WORKSPACE_DOMAIN=authright.com
+APP_URL=http://localhost:3000
+BETTER_AUTH_URL=http://localhost:3000
+MCP_RESOURCE_URL=http://localhost:3000/mcp</code></pre>
+      <h3>公司成员如何加入</h3>
+      <p>代码检查 <code>emailVerified === true</code>，并要求邮箱后缀与 <code>GOOGLE_WORKSPACE_DOMAIN</code> 一致。符合条件的公司用户首次登录自动成为普通成员；初始化管理员只授予管理员角色。现有实现不要求邀请或手工批准。</p>
+      <p class="file">代码：<code>src/server/auth-options.ts</code>、<code>src/server/company-identity.ts</code>、<code>src/app/sign-in/sign-in-button.tsx</code>。认证路由：<code>src/app/api/auth/[...all]/route.ts</code>。</p>
+      <div class="source">平台依据：<a href="https://support.google.com/cloud/answer/15549257?hl=en">Google OAuth 客户端管理</a><a href="https://developers.google.com/workspace/guides/configure-oauth-consent">同意屏幕与权限配置</a><a href="https://developers.google.com/identity/protocols/oauth2/web-server">Web Server OAuth 与回调校验</a></div>
+    </section>
+
+    <section id="gemini" class="section">
+      <div class="number">04 / GEMINI API</div><h2>配置 Gemini 摘要服务</h2>
+      <p class="lede">项目使用 Gemini Developer API 的 REST 接口。文章和视频摘要都由 Worker 生成，每次处理通常调用一次模型。</p>
+      <p><span class="label">平台入口</span> <a href="https://aistudio.google.com/apikey">Google AI Studio → API Keys</a> · <a href="https://console.cloud.google.com/billing">Google Cloud → Billing</a></p>
+      <ol>
+        <li><strong>选择或导入 Cloud 项目。</strong>进入 AI Studio，接受所需条款，在 Dashboard → Projects 中确认项目；已有 Cloud 项目可通过 Import projects 导入。</li>
+        <li><strong>创建 API Key。</strong>在 API Keys 中选择目标项目创建并保存密钥。遇到权限不足时，由项目管理员核对创建 API Key、启用服务及关联服务账号所需权限。</li>
+        <li><strong>核对 API 与密钥限制。</strong>当前官方文档说明 AI Studio 新建 Key 使用 authorization key，默认限制为 Gemini API；旧 standard key 需要明确限制。若旧密钥显示 Unrestricted，按 AI Studio 提示限制为 Gemini API。接口访问失败时核对 Generative Language API 和密钥权限。</li>
+        <li><strong>核对实际计费档位。</strong>在 AI Studio 项目 / Key 页面及 Cloud Billing 确認实际使用 Free 或 Paid；付费方案按平台引导完成关联计费与当前付款设置。</li>
+        <li><strong>填入项目配置。</strong>将 Key 写入 <code>GEMINI_API_KEY</code>，把实际档位同步为 <code>GEMINI_BILLING_TIER=free</code> 或 <code>paid</code>。</li>
+        <li><strong>同时完成 YouTube Key 配置后启用处理。</strong>设 <code>CONTENT_PROCESSING_ENABLED=true</code>，启动或重新创建 Worker，提交一个样本验证摘要。</li>
+      </ol>
+      <pre><code>GEMINI_API_KEY=YOUR_GEMINI_API_KEY
+GEMINI_BILLING_TIER=free
+YOUTUBE_API_KEY=YOUR_YOUTUBE_API_KEY
+CONTENT_PROCESSING_ENABLED=true
+WORKER_CONCURRENCY=2
+SUMMARY_CONCURRENCY=1</code></pre>
+      <div class="callout warn"><strong>档位设置与费用：</strong><code>GEMINI_BILLING_TIER</code> 仅决定 Sharing 使用哪套费用估算；它不会修改 Google 平台的计费档位、账单或额度。Free 模式显示的零估算成本也不是供应商账单凭证。实际用量、价格和配额以对应 Cloud 项目为准。</div>
+      <h3>模型在哪里配置</h3>
+      <p>当前代码固定模型为 <code>gemini-3.5-flash-lite</code>，常量 <code>GEMINI_SUMMARY_MODEL</code> 位于 <code>src/server/content/gemini.ts</code>。当前没有 <code>GEMINI_MODEL</code> 环境变量；切换模型需要修改代码，核对输出结构、模型可用性与费用估算，再验证并重新构建生产镜像。</p>
+      <h3>Worker 如何启动</h3>
+      <pre><code># 本地：另开终端，项目根目录执行
+pnpm dev:worker
+
+# 本地已构建版本
+pnpm start:worker
+
+# 生产：先按第 08 节定义 dc，再重新加载 Worker 配置
+dc up -d --wait worker
+dc logs --tail=100 worker</code></pre>
+      <p><code>pnpm dev</code> 只启动网页。Worker 在进程启动时读取开关；设为 true 后会处理已有排队链接。启动日志应出现 <code>worker_ready</code>、<code>contentConsumption: enabled</code>，并持续输出 <code>worker_heartbeat</code>。</p>
+      <p>当前视频方案把公开 YouTube URL 直接交给 Gemini，非流式请求最长 600 秒；时长至少 30 分钟或未知时使用 0.1 fps。当前流程不需要 yt-dlp、FFmpeg、下载代理或 Files API。查询已有分享不会调用模型。</p>
+      <p class="file">代码：<code>src/server/content/gemini.ts</code>、<code>src/worker/index.ts</code>、<code>src/server/env.ts</code>。说明：<a href="https://github.com/TAO44123/Authright_Sharing/blob/main/docs/YOUTUBE_AUDIO_WORKER.md">当前视频 Worker 文档</a>（文件名保留历史命名）。</p>
+      <div class="source">平台依据：<a href="https://ai.google.dev/gemini-api/docs/api-key">API Key 创建、项目与限制</a><a href="https://ai.google.dev/gemini-api/docs/billing">计费配置</a><a href="https://ai.google.dev/gemini-api/docs/rate-limits">请求限额</a><a href="https://ai.google.dev/gemini-api/docs/pricing">当前价格</a></div>
+    </section>
+
+    <section id="youtube" class="section">
+      <div class="number">05 / YOUTUBE DATA API</div><h2>配置 YouTube 视频元数据</h2>
+      <p class="lede">YouTube Data API v3 读取公开视频的标题、Description、时长等；视频内容摘要由上一节的 Gemini 生成。</p>
+      <p><span class="label">平台入口</span> <a href="https://console.cloud.google.com/apis/library/youtube.googleapis.com">API Library → YouTube Data API v3</a> · <a href="https://console.cloud.google.com/apis/credentials">APIs &amp; Services → Credentials</a></p>
+      <ol>
+        <li>选择用于 YouTube 的 Cloud 项目，在 API Library 搜索 <strong>YouTube Data API v3</strong> 并启用。</li>
+        <li>进入 Credentials → Create credentials → API key，创建 Key。</li>
+        <li>编辑该 Key，将 API restrictions 限制为 <strong>YouTube Data API v3</strong>。这是 Worker 服务端调用，不采用网页 HTTP referrer 限制；如设置 IP 限制，填写实际服务器出口 IP 并验证。</li>
+        <li>把密钥写入 <code>YOUTUBE_API_KEY</code>，重启本地 Worker 或重建生产 Worker 容器。</li>
+        <li>提交一个公开视频，确认详情页元数据与摘要都生成成功；配额在对应 API 的 Quotas / Metrics 中核对。</li>
+      </ol>
+      <pre><code>YOUTUBE_API_KEY=YOUR_YOUTUBE_DATA_API_KEY</code></pre>
+      <p>当前 Worker 只要启用内容处理，就要求 Gemini 与 YouTube 两个 Key 同时存在，即使先只测试文章也需要填齐。建议各服务采用独立 Key，便于限制权限、排查和轮换。</p>
+      <p class="file">代码：<code>src/server/content/youtube.ts</code>、<code>src/worker/index.ts</code>。</p>
+      <div class="source">平台依据：<a href="https://developers.google.com/youtube/registering_an_application">YouTube API 凭据创建</a></div>
+    </section>
+
+    <section id="database" class="section">
+      <div class="number">06 / DATABASE &amp; IDENTITY</div><h2>数据库、签名密钥与初始管理员</h2>
+      <h3>本地首次搭建</h3>
+      <p>开发工具要求：Node.js 24、pnpm 11.25.0 和 Docker。以下命令在项目根目录执行；已有 <code>.env</code> 时直接编辑，不覆盖现有文件。</p>
+      <pre><code>pnpm install --frozen-lockfile
+# 仅首次搭建且 .env 不存在时复制
+cp .env.example .env
+
+# 每次生成一个独立随机值，分别填两个签名密钥
+openssl rand -hex 32
+openssl rand -hex 32
+
+# 填齐 Web 配置后初始化数据库与管理员
+docker compose up -d --wait
+pnpm db:migrate
+pnpm admin:bootstrap tao.xu@authright.com
+pnpm dev</code></pre>
+      <div class="table-wrap"><table><thead><tr><th>字段</th><th>配置方法</th></tr></thead><tbody>
+        <tr><td><code>DATABASE_URL</code></td><td>本地模板：<code>postgresql://sharing:sharing_local@127.0.0.1:55432/sharing</code>。本地 Docker 只绑定 loopback 的 55432 端口。</td></tr>
+        <tr><td><code>TEST_DATABASE_URL</code></td><td>独立测试库：<code>postgresql://sharing:sharing_local@127.0.0.1:55432/sharing_test</code>。集成测试不使用正式业务库。</td></tr>
+        <tr><td><code>BETTER_AUTH_SECRET</code></td><td>至少 32 字符，使用随机生成值；服务于 Better Auth 认证。</td></tr>
+        <tr><td><code>CURSOR_SIGNING_SECRET</code></td><td>另一份独立随机值，至少 32 字符；用于列表分页游标签名，变量名中的 CURSOR 与 Cursor 编辑器无关。</td></tr>
+      </tbody></table></div>
+      <p>两个签名密钥必须不同。管理员初始化要在目标邮箱首次登录前执行；如果该邮箱已经是普通成员，脚本会拒绝自动提升，需由现有管理员通过成员管理页调整角色。</p>
+      <h3>生产数据库</h3>
+      <p>生产 PostgreSQL 在 Compose 内部网络中，连接地址使用 <code>postgres:5432</code>。<code>POSTGRES_PASSWORD</code> 与 <code>DATABASE_URL</code> 中的密码必须一致；采用随机 hex 密码可减少 URL 转义问题。已有数据卷的数据库密码不会因为修改环境变量自动更新。</p>
+      <p class="file">本地定义：<code>compose.yaml</code>；生产定义：<code>deploy/lightsail/compose.yaml</code>；管理员入口：<code>scripts/bootstrap.ts</code>、<code>src/server/bootstrap.ts</code>。</p>
+    </section>
+
+    <section id="mcp" class="section">
+      <div class="number">07 / MCP OAUTH</div><h2>连接客户端并授权访问 Sharing</h2>
+      <p>Sharing 自己运行 OAuth 授权服务，代码入口为 <code>src/server/auth-options.ts</code> 的 <code>mcp({...})</code> 插件。登录页是 <code>/sign-in</code>，授权确认页是 <code>/consent</code>，资源地址来自 <code>MCP_RESOURCE_URL</code>。客户端可以动态注册，用户仍需登录并同意授权。</p>
+      <div class="table-wrap"><table><thead><tr><th>权限</th><th>用途</th></tr></thead><tbody>
+        <tr><td><code>shares:read</code></td><td>读取分享列表与详情。</td></tr><tr><td><code>shares:write</code></td><td>提交分享、撤回本人分享。</td></tr><tr><td><code>members:read</code></td><td>搜索团队成员。</td></tr><tr><td><code>offline_access</code></td><td>客户端需要维持连接时申请刷新令牌。</td></tr>
+      </tbody></table></div>
+      <p>Codex、Claude Code 与 Cursor Plugin 当前版本为 <strong>0.4.0</strong>，默认连接生产 MCP。安装与更新方法见 <a href="https://github.com/TAO44123/Authright_Sharing_Plugin#readme">独立插件仓库 README</a>；用户电脑不需要运行本地 Web、Worker 或数据库。</p>
+      <ol><li>安装并启用插件，确认 MCP 地址为 <code>https://sharing.authright.com/mcp</code>；只有开发调试才使用本地服务。</li><li>发起 OAuth 登录；浏览器中使用目标公司 Google 账号登录 Sharing。</li><li>在授权页核对账号和所需权限，选择 <strong>Allow access</strong>。</li><li>实际调用 <code>list_shares</code> 验证读取；需要写入时再确认相关权限。</li></ol>
+      <p>本地 Codex 配置示例，可合并到客户端配置中；正式连接将 URL 替换为正式地址：</p>
+      <pre><code>[mcp_servers.sharing-local]
+url = "http://localhost:3000/mcp"</code></pre>
+      <p>Cursor 的 <code>http://localhost:8787/callback</code>、<code>http://127.0.0.1:8787/callback</code> 是客户端接收 Sharing 授权码的地址，服务端已部署兼容修复。它们不需要填入 Google Web OAuth 客户端；Google 只登记本项目 <code>/api/auth/callback/google</code> 回调。</p>
+      <p>其他 MCP 客户端填写相同服务地址，注册与登录方式按客户端支持情况执行。仅修改 URL 不能证明已完成授权；需要完成浏览器确认并成功调用工具。</p>
+      <div class="callout">授权身份取自点击 Allow access 时的 Sharing 网页账号。切换网页账号不会改变已有客户端连接的身份；在账户设置撤销旧连接，再用目标账号重新授权。撤权保留网页登录，但旧客户端令牌失效。</div>
+      <p>发现端点：<code>/.well-known/oauth-protected-resource/mcp</code> 与 <code>/.well-known/oauth-authorization-server/api/auth</code>；OAuth 端点挂载在 <code>/api/auth/*</code>。</p>
+      <p class="file">权限：<code>src/server/mcp-scopes.ts</code>；授权记录：<code>src/server/oauth-grants.ts</code>；客户端本地示例：<a href="https://github.com/TAO44123/Authright_Sharing/blob/main/docs/validation/codex-config.toml">codex-config.toml</a>。</p>
+    </section>
+
+    <section id="deploy" class="section">
+      <div class="number">08 / PRODUCTION</div><h2>域名、服务器与生产配置</h2>
+      <p class="lede">当前部署方案：AWS Lightsail 上运行 Caddy、Web、Worker 和 PostgreSQL。仓库最近部署记录使用域名 <code>sharing.authright.com</code>；本文不重复生产状态验收。</p>
+      <p><span class="label">平台入口</span> <a href="https://lightsail.aws.amazon.com/">AWS Lightsail</a> · 域名所在的 DNS 管理平台 · <a href="https://github.com/TAO44123/Authright_Sharing/settings/keys">GitHub 仓库 Deploy keys</a></p>
+      <ol>
+        <li><strong>Lightsail：</strong>创建 Ubuntu 实例，绑定 Static IP；网络防火墙开放 80 / 443，SSH 22 限制到管理员 IP。</li>
+        <li><strong>DNS：</strong>将正式子域名的 A 记录指向该 Static IP；IPv6 配置完整后再发布相应 AAAA 记录。</li>
+        <li><strong>GitHub：</strong>生成服务器专用 SSH 密钥，将公钥登记为只读 Deploy key，私钥保留在服务器；项目路径按部署手册为 <code>/opt/sharing</code>。</li>
+        <li><strong>Google：</strong>在生产 OAuth 客户端登记正式 HTTPS origin 与 <code>/api/auth/callback/google</code> 回调。</li>
+        <li><strong>生产配置：</strong>首次把生产模板复制为 <code>/etc/sharing/lightsail.env</code>，文件权限为 600；用 <code>sudoedit</code> 填入独立生产凭据。</li>
+        <li><strong>构建与启动：</strong>按部署手册构建 Git SHA 镜像，填写 <code>SHARING_IMAGE</code>，初始化数据库、运行迁移、初始化管理员，再启动 Web / Worker / Caddy。</li>
+      </ol>
+      <pre><code># 在 Lightsail 的 SSH 终端定义；每次新会话重新定义
+dc() {
+  sudo docker compose --env-file /etc/sharing/lightsail.env \
+    -f /opt/sharing/deploy/lightsail/compose.yaml "$@"
+}
+
+# 编辑现有生产配置
+sudoedit /etc/sharing/lightsail.env
+dc config --quiet
+
+# 仅更新运行配置时，重新加载受影响的服务
+dc up -d --wait web worker caddy
+dc ps</code></pre>
+      <p>生产模板的重要字段：</p>
+      <pre><code>SHARING_DOMAIN=sharing.authright.com
+SHARING_IMAGE=sharing:YOUR_GIT_SHA
+POSTGRES_PASSWORD=YOUR_RANDOM_HEX_PASSWORD
+DATABASE_URL=postgresql://sharing:YOUR_RANDOM_HEX_PASSWORD@postgres:5432/sharing
+BETTER_AUTH_SECRET=YOUR_FIRST_RANDOM_SECRET
+CURSOR_SIGNING_SECRET=YOUR_SECOND_RANDOM_SECRET
+GOOGLE_CLIENT_ID=YOUR_PRODUCTION_GOOGLE_CLIENT_ID
+GOOGLE_CLIENT_SECRET=YOUR_PRODUCTION_GOOGLE_CLIENT_SECRET
+GOOGLE_WORKSPACE_DOMAIN=authright.com
+GEMINI_API_KEY=YOUR_GEMINI_API_KEY
+GEMINI_BILLING_TIER=free
+YOUTUBE_API_KEY=YOUR_YOUTUBE_API_KEY
+CONTENT_PROCESSING_ENABLED=false
+WORKER_CONCURRENCY=2
+SUMMARY_CONCURRENCY=1
+LOG_LEVEL=info</code></pre>
+      <p>生产 Compose 自动从 <code>SHARING_DOMAIN</code> 生成 <code>APP_URL</code>、<code>BETTER_AUTH_URL</code> 和 <code>MCP_RESOURCE_URL</code>。Caddy 管理 HTTPS 证书，前提是 DNS 与公网端口正确。供应商配置验证后再开启内容处理；Worker 会消费积压链接。</p>
+      <div class="callout warn">上述 <code>dc up</code> 用于加载运行配置，不会自动拉取源码、构建镜像或执行迁移。代码更新走完整部署流程，先备份再迁移。Docker 持久卷保存运行数据，但日常还需要异机数据库备份。</div>
+      <p><a href="https://github.com/TAO44123/Authright_Sharing/blob/main/docs/DEPLOY_LIGHTSAIL.md">完整部署、更新、回滚与备份手册 →</a></p>
+      <div class="source">平台依据：<a href="https://docs.aws.amazon.com/lightsail/latest/userguide/lightsail-create-static-ip.html">Lightsail Static IP</a><a href="https://caddyserver.com/docs/automatic-https">Caddy 自动 HTTPS</a></div>
+    </section>
+
+    <section id="reference" class="section">
+      <div class="number">09 / ENVIRONMENT REFERENCE</div><h2>环境变量速查</h2>
+      <div class="table-wrap"><table><thead><tr><th>变量</th><th>使用方</th><th>含义 / 约束</th></tr></thead><tbody>
+        <tr><td><code>DATABASE_URL</code></td><td>Web / Worker / 脚本</td><td>PostgreSQL 连接串，必须包含数据库名称。</td></tr>
+        <tr><td><code>TEST_DATABASE_URL</code></td><td>测试</td><td>独立 <code>sharing_test</code>；不指向生产库。</td></tr>
+        <tr><td><code>APP_URL</code></td><td>Web</td><td>站点规范 origin；无子路径、查询或 fragment。本地默认 localhost:3000。</td></tr>
+        <tr><td><code>BETTER_AUTH_URL</code></td><td>Web</td><td>可选；填写时必须等于 <code>APP_URL</code>。</td></tr>
+        <tr><td><code>MCP_RESOURCE_URL</code></td><td>Web</td><td>必须严格等于 <code>APP_URL + /mcp</code>。</td></tr>
+        <tr><td><code>BETTER_AUTH_SECRET</code></td><td>Web</td><td>独立认证密钥，至少 32 字符。</td></tr>
+        <tr><td><code>CURSOR_SIGNING_SECRET</code></td><td>Web</td><td>独立分页签名密钥，至少 32 字符，不能与认证密钥相同。</td></tr>
+        <tr><td><code>GOOGLE_CLIENT_ID</code><br><code>GOOGLE_CLIENT_SECRET</code></td><td>Web</td><td>Google OAuth 凭据，两项成对填写；生产必须具备。</td></tr>
+        <tr><td><code>GOOGLE_WORKSPACE_DOMAIN</code></td><td>Web / 管理脚本</td><td>公司邮箱域名，例如 authright.com。</td></tr>
+        <tr><td><code>CONTENT_PROCESSING_ENABLED</code></td><td>Worker</td><td>true / false；模板默认 false。true 时要求两项 API Key 与计费档位。</td></tr>
+        <tr><td><code>GEMINI_API_KEY</code></td><td>Worker</td><td>Gemini Developer API Key。</td></tr>
+        <tr><td><code>GEMINI_BILLING_TIER</code></td><td>Worker</td><td>free / paid；启用处理时必填。用于费用估算。</td></tr>
+        <tr><td><code>YOUTUBE_API_KEY</code></td><td>Worker</td><td>YouTube Data API v3 Key。</td></tr>
+        <tr><td><code>WORKER_CONCURRENCY</code></td><td>Worker</td><td>任务并发，默认 2，范围 1–32。</td></tr>
+        <tr><td><code>SUMMARY_CONCURRENCY</code></td><td>Worker</td><td>模型调用并发，默认 1；不能大于任务并发。</td></tr>
+        <tr><td><code>LOG_LEVEL</code></td><td>Web / Worker</td><td>debug / info / warn / error / silent；默认 info。</td></tr>
+        <tr><td><code>SHARING_DOMAIN</code></td><td>生产 Compose / Caddy</td><td>正式域名，不含协议或路径。</td></tr>
+        <tr><td><code>SHARING_IMAGE</code></td><td>生产 Compose</td><td>实际已构建镜像标签，如 sharing:GitSHA。</td></tr>
+        <tr><td><code>POSTGRES_PASSWORD</code></td><td>生产 PostgreSQL</td><td>初始化密码，需与连接串一致；已有数据库改密需另外操作。</td></tr>
+      </tbody></table></div>
+      <h3>建议补齐的配置登记信息</h3>
+      <p>交接时单独记录 Google Cloud 项目 ID、OAuth 客户端名称、Gemini / YouTube Key 名称、各平台负责人，以及 DNS 所在平台。本文未访问真实后台，以上信息尚未确认。登记凭据名称和负责人即可，密钥值继续保存在受保护的运行配置中。</p>
+      <p class="file">默认值与校验以 <code>src/server/env.ts</code> 和 <code>src/worker/index.ts</code> 为准；模板以根目录及 <code>deploy/lightsail</code> 下的 <code>.env.example</code> 为准。</p>
+    </section>
+
+    <section id="troubleshooting" class="section">
+      <div class="number">10 / VERIFICATION</div><h2>配置完成后怎么确认</h2>
+      <ol><li><strong>站点：</strong>访问首页和 <code>/api/health</code>，确认 Web 与数据库正常。</li><li><strong>Google：</strong>用公司账号真实登录；查看当前邮箱；另确认非公司账号无法访问。</li><li><strong>内容：</strong>提交文章与公开视频各一个，确认任务从排队到完成，摘要与视频元数据正常。</li><li><strong>MCP：</strong>查看发现端点是否使用正确域名，重新完成 OAuth，并实际调用工具。</li><li><strong>生产：</strong>查看服务状态及 Worker 心跳；需要时按部署手册做数据库备份与恢复演练。</li></ol>
+      <pre><code># 只读检查：正式域名
+curl -fsS https://sharing.authright.com/api/health
+curl -fsS https://sharing.authright.com/.well-known/oauth-protected-resource/mcp
+curl -fsS https://sharing.authright.com/.well-known/oauth-authorization-server/api/auth
+
+# 在服务器 SSH 终端，已定义 dc 后
+dc ps
+dc logs --tail=100 web worker caddy</code></pre>
+      <details open><summary>Cursor 点击授权不打开浏览器</summary><p>先查看 MCP 日志。若出现 <code>web clients require https redirect URIs on non-loopback hosts</code>，错误发生在注册阶段。生产 Web <code>5b97020</code> 已补齐旧 cursor 协议及 localhost/IPv4 注册兼容；执行 <strong>Developer: Reload Window</strong>，再从 Sharing 连接授权。连续重试后的 <code>429</code> 是限流，暂停点击、等窗口结束再试。浏览器打开与登录回跳仍需要实际验证。</p></details>
+      <details open><summary>Google 报 redirect_uri_mismatch</summary><p>检查正确 Cloud 项目下正确 OAuth 客户端的 Redirect URI。协议、域名、端口、路径必须匹配；本地回调是 <code>http://localhost:3000/api/auth/callback/google</code>。同时检查 APP_URL，保存后重新发起登录。</p></details>
+      <details open><summary>Google 登录后提示无访问权限</summary><p>检查邮箱已验证且属于配置的公司域名；Google Audience 也可能限制登录。首次登录自动创建普通成员，bootstrap 管理的是初始管理员角色。</p></details>
+      <details open><summary>内容一直 queued / 排队中</summary><p>确认 Worker 正在运行、内容处理开关为 true、两个 API Key 已填且 billing tier 正确。修改 .env 后重启 Worker；生产通过 dc up 重新加载环境。网页正常并不能证明 Worker 正在消费队列。</p></details>
+      <details open><summary>Gemini 或 YouTube 返回 400 / 401 / 403</summary><p>依据对应 API 的错误检查 Key、项目、启用服务、Key 限制与权限。Gemini 的模型及输入兼容性也需核对；后台 Key 限制若按网页 referrer 配置，可能与 Worker 服务端请求不匹配。</p></details>
+      <details open><summary>Gemini 返回 429 / 额度不足</summary><p>检查对应 Cloud 项目的额度、计费和当前用量，降低摘要并发或等待额度恢复。当前 Worker 将 Gemini 429 记录为处理失败，保留分享；容量恢复后可手动重试。SUMMARY_CONCURRENCY 限制并发数，不是 RPM / TPM / RPD 调度器。</p></details>
+      <details open><summary>MCP 返回 401 / invalid_grant</summary><p>未授权请求返回 401 属于正常认证挑战。已授权请求则检查连接是否撤销、令牌是否失效、资源地址和权限是否正确；在客户端重新发起 OAuth。撤销后旧访问与刷新令牌继续失效。</p></details>
+      <details open><summary>修改生产配置后似乎没有变化</summary><p>核对编辑的是 <code>/etc/sharing/lightsail.env</code>，执行的 Compose 使用了正确 --env-file 与 -f 路径。环境变量变更用 dc up 重建受影响的容器；普通 restart 不会重新注入新配置。代码变化还需要重新构建并部署镜像。</p></details>
+      <details open><summary>生产 Caddy 502 / HTTPS 不可用</summary><p>HTTPS 问题先查 DNS、Static IP、防火墙和 Caddy 日志；502 再查 Web 健康、数据库连接、迁移与启动配置。完整操作参见部署手册。</p></details>
+      <div class="source">仓库依据：<a href="https://github.com/TAO44123/Authright_Sharing/blob/main/README.md">README</a><a href="https://github.com/TAO44123/Authright_Sharing/blob/main/docs/DEPLOY_LIGHTSAIL.md">Lightsail 部署手册</a><a href="https://github.com/TAO44123/Authright_Sharing/blob/main/docs/YOUTUBE_AUDIO_WORKER.md">视频 Worker 配置</a><a href="https://github.com/TAO44123/Authright_Sharing/blob/main/docs/validation/YOUTUBE_URL_GEMINI.md">当前视频验收记录</a></div>
+    </section>
+    <footer>Sharing 项目配置指南 · 2026-10-01<br>平台页面与服务规则可能更新；实际参数以对应平台和当前仓库版本为准。本文件可直接在浏览器打开，或使用打印按钮保存为 PDF。</footer>
+  </main>
+</div>
+</body>
+</html>

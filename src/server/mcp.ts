@@ -83,7 +83,7 @@ export const mcpHandler = requireMcpAuth(
           "get_share",
           {
             description:
-              "Read a saved article summary, video audio summary, or author video description with its original source URL and processing status. Video summaries analyze audio only, not visuals. Full articles and transcripts are unavailable. Reading never starts processing.",
+              "Read a saved article summary, video summary, or author video description with its original source URL and processing status. Use content_scope_note for video coverage: current summaries use speech and sampled visuals; historical summaries may cover audio only. Full articles and transcripts are unavailable. Reading never starts processing.",
             inputSchema: contracts.get_share.input,
             outputSchema: contracts.get_share.output,
             annotations: { readOnlyHint: true, openWorldHint: false },
@@ -117,7 +117,7 @@ export const mcpHandler = requireMcpAuth(
           "list_members",
           {
             description:
-              "Find team members by name or email to disambiguate people before filtering shares by user_id. Follow next_cursor for more.",
+              "List team members, or find them by name or email to disambiguate people before filtering shares by user_id. Omit query to list all members and follow next_cursor until exhausted.",
             inputSchema: contracts.list_members.input,
             outputSchema: contracts.list_members.output,
             annotations: { readOnlyHint: true, openWorldHint: false },

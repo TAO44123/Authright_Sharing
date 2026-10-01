@@ -2,7 +2,7 @@
   "mcpServers": {
     "sharing": {
       "type": "http",
-      "url": "http://localhost:3000/mcp"
+      "url": "https://sharing.authright.com/mcp"
     }
   }
 }

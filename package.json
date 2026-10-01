@@ -21,6 +21,8 @@
     "test:unit": "vitest run tests/unit",
     "test:integration": "vitest run tests/integration --fileParallelism=false",
     "test:codex": "node scripts/verify-codex.mjs",
+    "plugin:export": "node scripts/export-plugin.mjs",
+    "plugin:cursor:install": "node scripts/install-cursor-plugin.mjs",
     "check": "pnpm lint && pnpm check:boundaries && pnpm typecheck && pnpm test:unit",
     "auth:generate": "auth generate --config scripts/auth-schema-config.ts --output src/server/db/auth-schema.ts --adapter drizzle --dialect postgresql --yes",
     "format": "prettier --write src scripts tests *.ts *.mjs",

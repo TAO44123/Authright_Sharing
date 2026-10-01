@@ -2,6 +2,8 @@
 
 日期：2026-09-27（America/New_York；命令输出时间为 UTC）。本轮按用户决定只做本机 Codex 支持与验证；Claude Code、Cursor、HTTPS 和私有仓库分发继续延期。
 
+本文保留当时的本地验收记录。2026-09-30 起，仓库 Plugin 源现已更新为三端 `0.4.0`，默认连接生产 MCP；当前安装和验证方法见 [远程 Plugin](../PLUGIN_REMOTE.md)。下文的 localhost 和旧版本描述仅代表历史验收环境。
+
 ## 本机交付
 
 - MCP 暴露 `share_link`、`list_shares`、`get_share`、`list_members`、`withdraw_share`，均调用网页共用的业务服务。OAuth 可授予 `shares:read`、`shares:write`、`members:read`；服务端每次按用户、连接和工具 scope 授权。
@@ -45,3 +47,9 @@ SHARING_CODEX_PLUGIN=1 pnpm test:codex
 ```
 
 这些命令只用于本机开发。安装后打开新的 Codex 聊天，可直接输入 `$sharing:list-shares 查询最近七天团队分享了什么`。其它单项入口为 `$sharing:get-share`、`$sharing:list-members`、`$sharing:share-link`、`$sharing:withdraw-share`；综合入口为 `$sharing:sharing`。Skill 负责指导 Codex 调用对应的 Sharing MCP 工具，实际读写和授权仍由 MCP 服务处理。Skill 名称使用连字符，插件安装后由 Codex 加上 `sharing:` 命名空间，因此不是 `$sharing_list_shares`。Token、Google 凭据和数据库配置均不进入插件文件。
+
+## 2026-09-30 生产 Codex 桌面只读查询
+
+17:37 EDT，本聊天调用已加载的 Sharing `0.4.0` Skill 和 `list_shares` MCP 工具成功。返回范围为 `[2026-09-23T21:37:03.743Z, 2026-09-30T21:37:03.743Z)`，共 5 条分享，`next_cursor:null`；包含美团 Agent 评测文章、FDE 视频、Google Agent Graphs 课程、Jev/LangGraph 文章和 Harness Engineering 视频。4 条 ready，1 条摘要失败并保留作者简介，列表按真实返回状态展示。
+
+此次查询通过当前桌面插件的生产 OAuth 连接读取，没有使用本地服务或测试身份，也没有写入业务数据。它补充了生产只读调用证据，不代表 Git 来源新安装、其他工具、刷新、撤权或更新回退全部通过；Cursor 的授权验收仍单独记录。

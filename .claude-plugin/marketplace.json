@@ -1,0 +1,12 @@
+{
+  "name": "authright-sharing",
+  "description": "Authright team plugins for sharing and finding saved links.",
+  "owner": { "name": "Authright" },
+  "plugins": [
+    {
+      "name": "sharing",
+      "source": "./plugins/sharing",
+      "description": "Find and share team links through Sharing."
+    }
+  ]
+}

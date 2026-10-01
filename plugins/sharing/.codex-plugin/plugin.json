@@ -1,7 +1,7 @@
 {
   "name": "sharing",
-  "version": "0.1.0+codex.20260928041720",
-  "description": "Find and share team links through the local Sharing MCP service.",
+  "version": "0.4.0",
+  "description": "Find and share team links through Sharing at sharing.authright.com.",
   "author": {
     "name": "Sharing"
   },
@@ -9,7 +9,7 @@
   "interface": {
     "displayName": "Sharing",
     "shortDescription": "Find and share team links.",
-    "longDescription": "Connect Codex to the local Sharing service to browse team links, save a URL, and withdraw your own shares.",
+    "longDescription": "Connect Codex to sharing.authright.com with your company Google account to browse team links, read saved article and video summaries, save a URL, and withdraw your own shares.",
     "developerName": "Sharing",
     "category": "Productivity",
     "capabilities": [

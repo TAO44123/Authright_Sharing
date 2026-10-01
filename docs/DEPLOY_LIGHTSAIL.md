@@ -8,7 +8,7 @@
 
 最初的本地部署演练记录（2026-09-28，Docker Desktop/Linux ARM64）：Compose 配置解析、Docker 镜像构建、空库迁移、管理员初始化、Web 健康检查、OAuth discovery 运行时域名、Worker 暂停模式启动、Caddy 配置校验及 PostgreSQL 备份/新库恢复均通过。该次本地演练未验证 AWS 实例、公网证书、生产 Google 登录或真实供应商请求；它不替代后来独立的部署检查。构建时 Better Auth 会尝试访问占位数据库并输出连接拒绝日志，但构建退出码为 0，运行时连接真实测试库和 discovery 检查通过；后续可单独优化这一构建日志问题。
 
-2026-09-29 当前更新：固定 IP 为 `174.129.205.232`，域名为 `sharing.authright.com`。服务器已从 GitHub 拉取至 [6581554](https://github.com/TAO44123/Authright_Sharing/commit/6581554efa52684890138fd402e50ac56e783a60)（包含 URL Worker 实现基线 [f9cd079](https://github.com/TAO44123/Authright_Sharing/commit/f9cd079eb22cc2cedd15c67fb33dafdf10a5c02c)），构建并启用同版本 Web/Worker `sharing:6581554`，应用 `0004_slow_menace`。生产 HTTPS health、两份 OAuth discovery 和 Worker 心跳通过；在服务器新镜像的一次性数据库中，真实编译 Worker 领取并完成短视频及约 110 分钟长视频 pg-boss 任务。正式两条分享原样保留。
+2026-09-29 URL Worker 部署记录：固定 IP 为 `174.129.205.232`，域名为 `sharing.authright.com`。服务器已从 GitHub 拉取至 [6581554](https://github.com/TAO44123/Authright_Sharing/commit/6581554efa52684890138fd402e50ac56e783a60)（包含 URL Worker 实现基线 [f9cd079](https://github.com/TAO44123/Authright_Sharing/commit/f9cd079eb22cc2cedd15c67fb33dafdf10a5c02c)），构建并启用同版本 Web/Worker `sharing:6581554`，应用 `0004_slow_menace`。生产 HTTPS health、两份 OAuth discovery 和 Worker 心跳通过；在服务器新镜像的一次性数据库中，真实编译 Worker 领取并完成短视频及约 110 分钟长视频 pg-boss 任务。正式两条分享原样保留。
 
 | 环节 | 本轮状态 |
 | --- | --- |
@@ -22,6 +22,16 @@
 本次备份为 `/home/ubuntu/sharing-backups/sharing-pre-6581554-20260929T033814Z.dump`，本机副本为 `.local/deployments/6581554-20260929/sharing-pre-6581554-20260929T033814Z.dump`（权限 0600、Git 忽略）。两端 SHA-256 均为 `4427a0f0f2c55c25a5c87c518b6e960cf0d9276c85a9d6a92c4eae34a480e9f7`。生产环境配置快照保存在 `/etc/sharing/lightsail.env.pre-6581554-20260929T033814Z`，受 root 私有权限保护，不导出凭据。正式库的 shares、contents、content_tasks、processing_attempts、usage_events、quota_reservations 在迁移前后核对一致；新增的两个 usage 字段允许 NULL。
 
 运行应用镜像 ID 为 `sha256:a68d071c064ef81f7e8abf48862947ea211475ec7e36be21330b6ef39a0f98dc`，构建使用的 Node 基础镜像 digest 为 `sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6`。运行配置保留原 API keys、Free tier、处理开关（true）、Worker 并发 2 / 摘要并发 1；服务器配置无旧下载工具或代理变量。新镜像未安装旧音频工具，旧镜像保留用于回滚。队列详情及证据边界见 [URL 验收](validation/YOUTUBE_URL_GEMINI.md#lightsail-新镜像的真实队列验收)。此次未重新执行 Google 登录或远程 MCP 客户端授权验收。
+
+## 2026-09-30 Cursor OAuth 修复部署
+
+当前部署记录：Web `sharing:5b97020`，Worker `sharing:6581554`，PostgreSQL 仍为 17.9；未新增数据库迁移。Web 的 OAuth Provider 1.7.6 使用版本固定的 pnpm 补丁，Docker 在依赖安装前复制 `patches/`。补丁范围、测试与升级移除条件见 [patches/README.md](../patches/README.md)。
+
+初次修复 `36f0b70` 只覆盖包含旧 cursor 协议的组合。用户后续日志显示桌面 localhost 组合仍被当作 web 客户端拒绝；`5b97020` 补齐 loopback/IPv4 注册方式。17:36 EDT 生产验证：health 200、localhost 与 IPv4 DCR 均 201/native、授权请求指向生产 `/sign-in`、3 种非法回调组合仍 400、未认证 MCP 401。真实 Cursor 登录及业务调用仍待用户确认。
+
+切换前配置备份：`/etc/sharing/lightsail.env.pre-cursor-oauth-20260930T213543Z`；数据库备份：`/home/ubuntu/sharing-backups/sharing-pre-cursor-oauth-20260930T213543Z.dump`，已检查 dump 目录。旧镜像与配置保留供回滚；本次备份未执行生产恢复演练。验证结果保存在本机忽略目录 `.local/deployments/5b97020-cursor-oauth/verification.json`，不上传凭据或数据库内容。
+
+`SHARING_IMAGE` 当前配置为 `sharing:5b97020`，本次只重建 Web，运行中的 Worker 未切换。后续整体 `docker compose up` 将让 Worker 使用该镜像；更新前需明确要切换的服务，不把配置变量当作实际容器版本。
 
 ## 1. 目标和准备项
 

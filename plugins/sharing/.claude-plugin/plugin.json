@@ -1,0 +1,8 @@
+{
+  "name": "sharing",
+  "version": "0.4.0",
+  "description": "Find and share team links through Sharing at sharing.authright.com.",
+  "author": { "name": "Authright" },
+  "homepage": "https://github.com/TAO44123/Authright_Sharing_Plugin#readme",
+  "repository": "https://github.com/TAO44123/Authright_Sharing_Plugin"
+}

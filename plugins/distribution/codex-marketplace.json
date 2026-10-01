@@ -1,0 +1,12 @@
+{
+  "name": "authright-sharing",
+  "interface": { "displayName": "Authright Sharing" },
+  "plugins": [
+    {
+      "name": "sharing",
+      "source": { "source": "local", "path": "./plugins/sharing" },
+      "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" },
+      "category": "Productivity"
+    }
+  ]
+}
